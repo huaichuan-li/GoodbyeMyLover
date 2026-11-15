@@ -1,0 +1,4 @@
+# 项目元数据与系统文件不入库
+.workbuddy/
+.DS_Store
+node_modules/

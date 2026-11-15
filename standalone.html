@@ -1,0 +1,1774 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>眼中皆是你 · 恐怖 / 即时动作 / 马</title>
+<style>
+/* 眼中皆是你 · 纯静态零依赖样式 */
+:root{
+  --bg:#07090c; --ink:#d8d2c4; --dim:#7d7a72; --line:#2a2d30;
+  --red:#b4453c; --amber:#c8a15a; --cold:#6f8a91;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:var(--bg)}
+body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;color:var(--ink);
+  -webkit-font-smoothing:antialiased;user-select:none;cursor:default}
+#stage{position:fixed;inset:0;overflow:hidden;background:radial-gradient(ellipse at 50% 45%,#0d1116 0%,#050608 78%)}
+#game{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+#grain{position:absolute;inset:0;pointer-events:none;opacity:.16;mix-blend-mode:overlay;
+  background-image:repeating-linear-gradient(0deg,rgba(255,255,255,.06) 0 1px,transparent 1px 3px)}
+#split-line{position:absolute;left:50%;top:0;bottom:0;width:1px;background:linear-gradient(180deg,transparent,rgba(200,161,90,.35) 20%,rgba(200,161,90,.35) 80%,transparent);
+  pointer-events:none;z-index:4;box-shadow:0 0 22px rgba(0,0,0,.9)}
+#split-line.off{display:none}
+
+.hud{position:absolute;top:18px;z-index:6;font-size:11px;letter-spacing:.08em;color:var(--dim);width:210px;pointer-events:none}
+.hud-left{left:22px}
+.hud-right{right:22px;text-align:right}
+.hud-right.off,.hud-left.off{display:none}
+.hud-tag{font-size:12px;color:var(--amber);letter-spacing:.24em;margin-bottom:10px;text-shadow:0 0 14px rgba(200,161,90,.3)}
+.hud-row{display:flex;align-items:center;gap:8px;margin:5px 0}
+.hud-right .hud-row{flex-direction:row-reverse}
+.hud-row span{width:26px;flex:none}
+.hud-row b{width:28px;font-weight:400;font-variant-numeric:tabular-nums;flex:none}
+.bar{flex:1;height:3px;background:#1b1e21;position:relative;overflow:hidden}
+.bar i{position:absolute;left:0;top:0;bottom:0;width:0%;background:var(--red);transition:width .25s linear}
+.bar-h i{background:var(--cold)}
+.hud-foot{margin-top:9px;color:#565852;font-variant-numeric:tabular-nums}
+
+.prompt{position:absolute;left:50%;top:11%;transform:translateX(-50%);z-index:7;text-align:center;
+  font-size:13px;letter-spacing:.18em;color:var(--amber);text-shadow:0 0 18px rgba(200,161,90,.35);
+  pointer-events:none;white-space:nowrap;transition:opacity .3s}
+.subtitles{position:absolute;left:50%;bottom:9%;transform:translateX(-50%);z-index:7;width:min(760px,86vw);
+  text-align:center;font-size:17px;line-height:1.9;letter-spacing:.12em;color:#e5dfd1;
+  text-shadow:0 2px 14px #000,0 0 30px #000;pointer-events:none}
+.subtitles .who{color:var(--cold);font-size:13px;letter-spacing:.2em}
+.subtitles .onomat{color:var(--dim);font-style:italic;letter-spacing:.3em}
+.subtitles .line{animation:fadein .35s ease-out}
+@keyframes fadein{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+
+.qte{position:absolute;left:50%;bottom:22%;transform:translateX(-50%);z-index:8;width:min(520px,80vw);
+  background:rgba(8,10,13,.9);border:1px solid var(--line);padding:16px 20px 14px;
+  box-shadow:0 12px 60px rgba(0,0,0,.8)}
+.qte.hidden{display:none}
+.qte-title{font-size:12px;letter-spacing:.2em;color:var(--amber);margin-bottom:14px;display:flex;justify-content:space-between}
+.qte-title span{color:var(--dim);letter-spacing:.08em}
+.qte-track{position:relative;height:34px;background:#111418;border-left:1px solid #333;border-right:1px solid #333}
+.qte-beats{position:absolute;inset:0}
+.qte-beat{position:absolute;top:5px;width:9px;height:24px;margin-left:-4px;background:#4a4034;border-radius:1px}
+.qte-beat.hit{background:var(--amber);box-shadow:0 0 14px rgba(200,161,90,.7)}
+.qte-beat.miss{background:var(--red)}
+.qte-beat.echo{background:#31363a;border:1px dashed #55555a}
+.qte-cursor{position:absolute;top:0;bottom:0;width:1px;background:var(--amber);left:0;z-index:2;box-shadow:0 0 10px var(--amber)}
+.qte-hint{margin-top:10px;font-size:11px;color:var(--dim);letter-spacing:.1em;min-height:16px}
+
+.overlay{position:absolute;inset:0;z-index:20;display:none;align-items:center;justify-content:center;
+  background:rgba(3,4,6,.88);backdrop-filter:blur(3px);padding:24px}
+.overlay.show{display:flex}
+.card{max-width:min(720px,92vw);text-align:center;animation:rise .5s ease-out}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.card h1{font-size:clamp(28px,5vw,52px);font-weight:300;letter-spacing:.34em;margin:0 0 10px;color:#e8e1d2;text-shadow:0 0 40px rgba(200,161,90,.25)}
+.card h2{font-size:20px;font-weight:300;letter-spacing:.24em;color:var(--amber);margin:0 0 26px}
+.card .sub{font-size:12px;letter-spacing:.3em;color:var(--dim);margin-bottom:28px}
+.card p{font-size:14px;line-height:2.1;color:#b9b4a9;margin:10px 0;letter-spacing:.06em}
+.card .keys{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 26px;text-align:left;
+  margin:24px auto 26px;max-width:560px;font-size:12px;color:#a5a096;line-height:1.8}
+.card .keys b{color:var(--amber);font-weight:500;letter-spacing:.1em}
+.card .go{font-size:13px;letter-spacing:.28em;color:var(--amber);animation:blink 1.8s ease-in-out infinite;margin-top:8px}
+@keyframes blink{0%,100%{opacity:.45}50%{opacity:1}}
+.card .ending{font-size:13px;line-height:2.2;color:#b9b4a9;max-width:560px;margin:0 auto 22px}
+.card .stat{font-size:11px;color:#6d6a62;letter-spacing:.14em;margin-top:16px;font-variant-numeric:tabular-nums}
+.card .opt{display:inline-block;border:1px solid #3a3d40;padding:10px 18px;margin:6px;color:#c9c3b5;font-size:12px;letter-spacing:.12em}
+.card .opt b{color:var(--amber)}
+.flash{position:absolute;inset:0;z-index:15;pointer-events:none;background:#000;opacity:0;transition:opacity .12s}
+.flash.on{opacity:.55}
+body.present #grain{opacity:.08}
+body.present #game{filter:contrast(1.12) brightness(1.16)}
+@media (max-aspect-ratio:1/1){.hud{width:150px;font-size:10px}.subtitles{font-size:14px}}
+
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game" aria-label="游戏画面"></canvas>
+  <div id="grain" aria-hidden="true"></div>
+  <div id="split-line" aria-hidden="true"></div>
+
+  <div class="hud hud-left" id="hud-left">
+    <div class="hud-tag">A · 人马</div>
+    <div class="hud-row"><span>感染</span><div class="bar"><i id="bar-inf-a"></i></div><b id="num-inf-a">0</b></div>
+    <div class="hud-row"><span>人性</span><div class="bar bar-h"><i id="bar-hum-a"></i></div><b id="num-hum-a">100</b></div>
+    <div class="hud-foot" id="hud-foot-a">血清 ×2 · 00:00</div>
+  </div>
+
+  <div class="hud hud-right" id="hud-right">
+    <div class="hud-tag">B · 木乃伊</div>
+    <div class="hud-row"><span>感染</span><div class="bar"><i id="bar-inf-b"></i></div><b id="num-inf-b">0</b></div>
+    <div class="hud-row"><span>人性</span><div class="bar bar-h"><i id="bar-hum-b"></i></div><b id="num-hum-b">100</b></div>
+    <div class="hud-foot" id="hud-foot-b">共用一条命</div>
+  </div>
+
+  <div id="prompt" class="prompt"></div>
+  <div id="subtitles" class="subtitles"></div>
+
+  <div id="qte" class="qte hidden">
+    <div class="qte-title">暗号 · 三短一长 <span id="qte-sub">跟着亮点敲</span></div>
+    <div class="qte-track"><div class="qte-cursor" id="qte-cursor"></div><div class="qte-beats" id="qte-beats"></div></div>
+    <div class="qte-hint" id="qte-hint"></div>
+  </div>
+
+  <div id="overlay" class="overlay">
+    <div class="card" id="card"></div>
+  </div>
+  <div id="flash" class="flash"></div>
+</div>
+
+<script>
+/* 全部数值集中在此；file:// 下不依赖 fetch，直接挂到 G.DATA */
+(function () {
+  var G = window.G = window.G || {};
+  G.DATA = G.DATA || {};
+  G.DATA.config = {
+    step: 1 / 60,
+    world: { w: 2400, h: 980, pad: 60 },
+    view: { duoWidth: 1020, soloWidth: 1420, aspectKeep: true },
+    speed: { p1: 205, p2: 178, dash: 540, dashTime: .28, dashCd: 1.1 },
+    infection: {
+      base: 1.15, dash: 3, touch: 8, mistake: 12, serum: -35,
+      accelerateAt: 240, accelerateMul: 1.8, max: 100
+    },
+    humanity: { start: 100, mistake: -15, abandon: -25, correct: 10, give: 20, block: 8 },
+    noBack: { free: 30, sideOnly: 60 },
+    qte: {
+      window: .18,
+      pattern: [0, .26, .52, 1.02],       // 三短一长
+      echoDelay: .55,                     // 半拍 + 0.30s
+      echoTolerance: .11,
+      echoMax: 2,
+      lead: 1.1                           // 起拍前的准备时间
+    },
+    silence: { short: 1.5, long: 2.0 },
+    timeline: {
+      silence1: 50, candidates: 70, lock: 80, silence2: 170,
+      qte: 140, verify: 200, mapShift: 220, escape: 240, choice: 280, hardEnd: 300
+    },
+    serum: { count: 2 },
+    recognition: { candidateCount: 5 },
+    colors: {
+      bg: '#0a0f14', wall: '#1c262f', floor: '#16202a', ink: '#d8d2c4',
+      amber: '#c8a15a', red: '#b4453c', cold: '#6f8a91', silhouette: '#04080c',
+      rim: 'rgba(158,186,198,.62)'
+    }
+  };
+})();
+
+</script>
+<script>
+/* 剧情、拟声字幕、HUD 撒谎文案、结局文案 */
+(function () {
+  var G = window.G = window.G || {};
+  G.DATA = G.DATA || {};
+  G.DATA.script = {
+    title: '眼 中 皆 是 你',
+    subtitle: 'EVERY ONE OF THEM IS YOU',
+    theme: '恐怖 / 即时动作 / 马',
+    premise: [
+      '感染改写的是眼睛，不是世界。',
+      '人马眼中，一切活物都是木乃伊；木乃伊眼中，一切活物都是人马。',
+      '于是满城都是爱人，而你们认不出彼此。'
+    ],
+    brief: [
+      '末日第 41 天。你在废弃医院醒来，四肢长成了马蹄。',
+      '她在某个病房里，身上缠满绷带。你只记得你们之间的暗号：三短一长。',
+      '找到她，用血清恢复人形，赶上最后一班火箭。'
+    ],
+    keys: [
+      ['A · 人马', 'W A S D 移动 / 左 Shift 冲刺撞踏 / Q 切换候选 / F 报数 / 空格 敲暗号 / R 看倒影'],
+      ['B · 木乃伊', '方向键 移动 / 右 Shift 冲刺 / E 切换候选 / Enter 报数与敲暗号'],
+      ['单机', 'Tab 接管切换 / V 双屏观察 / 1 2 3 抉择'],
+      ['调试 / 展演', 'M 静音 / H 显真形 / T 快进到相认 / Y 快进到抉择 / P 展演亮度 / Esc 标题']
+    ],
+    lines: {
+      boot: '你眼中，一切活物都是……',
+      wake: '第四十一天。走廊里全是她。',
+      sameFace: '每一张脸都一样。别靠长相找人。',
+      firstSilence: '[ …… ]',
+      hoofBehind: '嗒……嗒……',
+      hoofHint: '身后一直有蹄声。别回头——你也回不了头。',
+      candidates: '有人动了一下。左右两屏看到的，不是同一批。',
+      reportTip: '各自报出「我这边第几个在动」，只有指向同一个人才算数。',
+      aiReport: '[同伴] 我这边第 {k} 个……在动。',
+      lockOk: '坐标重合。是同一个「人」。',
+      lockFail: '不是同一个。她还在里面。',
+      lockWrong: '你指向了别的东西。它记住了你的样子。',
+      qteTip: '敲出三短一长。假的会慢半拍跟着你敲。',
+      qteClean: '干净的四下。没有回声。',
+      qteEcho: '……慢了半拍。是谁在学你？',
+      misled: '你跟着回声走了。',
+      verifyTip: '把她引到水坑边，按 R 看倒影。倒影不撒谎。',
+      mirrorTrue: '倒影里，是绷带。是她。',
+      mirrorFake: '倒影里没有绷带。那东西笑了。',
+      block: '它扑过来时，只有她挡在了你前面。',
+      mapShift: '回来的时候，门不在原来的地方了。',
+      serum: '只剩两支血清。火箭只认人形。',
+      escape: '往右冲。不能后退。',
+      choiceTitle: '最 后 一 班 船',
+      choiceSub: '舱门只开一次。你把手里的血清给谁？',
+      choiceOpts: [
+        '1 · 一人一支，一起走',
+        '2 · 两支都留给自己',
+        '3 · 都给她，你留下'
+      ],
+      hudLies: ['感染 1??', '人性 ??', '血清 ×0', '距离发射 00:0?', 'A · 木乃伊'],
+      echoes: ['……三短一长……', '……你刚才敲的……', '……我在这里……']
+    },
+    endings: {
+      true: {
+        name: '眼 中 终 于 是 你',
+        text: '血清起效的那一刻，满城的木乃伊褪回人形。\n两侧画面短暂重合——这次你认得出来，只有一个人。\n火箭点火，地球在身后缩成一枚灰点。'
+      },
+      wrong: {
+        name: '跟 着 你 的 不 是 她',
+        text: '舱门合上，它慢慢转过头。绷带下面什么都没有。\n你带走的，是自己认错的那一次。'
+      },
+      horse: {
+        name: '你 成 了 他 们 中 的 一 个',
+        text: '最后一点人形从指尖退走。你低下头，看见的是马蹄。\n走廊里又多了一个「爱人」，在等一个永远不会来的人。'
+      },
+      alone: {
+        name: '一 个 人 上 船',
+        text: '你恢复了人形，顺利登船。舱内只有你的呼吸。\n人性值归零的时候，火箭并没有变轻。'
+      },
+      stay: {
+        name: '目 送',
+        text: '两支都给了她。舱门认得出人形，认不出一匹马。\n你站在发射场外，听见火箭升空，也听见身后的蹄声停了。'
+      },
+      timeout: {
+        name: '发 射 窗 口 关 闭',
+        text: '倒计时归零。你们还在走廊里，满眼都是彼此的样子。'
+      }
+    }
+  };
+})();
+
+</script>
+<script>
+/* 命名空间 / 工具 / 事件总线 / 状态机 / 固定步长循环 / 游戏总控 */
+(function () {
+  var G = window.G = window.G || {};
+  var C = G.DATA.config, S = G.DATA.script;
+
+  /* ---------- utils ---------- */
+  var U = G.utils = {
+    clamp: function (v, a, b) { return v < a ? a : (v > b ? b : v); },
+    lerp: function (a, b, t) { return a + (b - a) * t; },
+    dist: function (a, b) { var dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); },
+    now: function () { return performance.now() / 1000; },
+    fmt: function (t) {
+      var m = Math.floor(t / 60), s = Math.floor(t % 60);
+      return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    },
+    rnd: function (seed) {
+      var x = seed || 1;
+      return function () { x = (x * 1664525 + 1013904223) % 4294967296; return x / 4294967296; };
+    },
+    el: function (id) { return document.getElementById(id); }
+  };
+
+  /* ---------- events ---------- */
+  var listeners = {};
+  G.Events = {
+    on: function (name, fn) { (listeners[name] = listeners[name] || []).push(fn); },
+    emit: function (name, payload) {
+      (listeners[name] || []).forEach(function (fn) { try { fn(payload); } catch (e) { console.warn('[event]', name, e); } });
+    }
+  };
+
+  /* ---------- state machine ---------- */
+  var State = G.State = {
+    current: 'BOOT',
+    set: function (name) {
+      if (State.current === name) return;
+      var prev = State.current;
+      State.current = name;
+      G.Events.emit('phase', { from: prev, to: name });
+    }
+  };
+
+  /* ---------- loop ---------- */
+  var Loop = G.Loop = {
+    acc: 0, last: 0, running: false, fps: 60, frames: 0, fpsT: 0,
+    start: function () {
+      if (Loop.running) return;
+      Loop.running = true;
+      Loop.last = performance.now();
+      requestAnimationFrame(Loop.frame);
+    },
+    frame: function (t) {
+      var dt = Math.min((t - Loop.last) / 1000, .25);
+      Loop.last = t;
+      Loop.acc += dt;
+      var presses = G.Input.drain();
+      for (var i = 0; i < presses.length; i++) G.Game.onPress(presses[i]);
+      while (Loop.acc >= C.step) {
+        G.Game.update(C.step);
+        Loop.acc -= C.step;
+      }
+      G.Renderer.renderAll(Loop.acc / C.step);
+      Loop.frames++;
+      if (t - Loop.fpsT > 1000) { Loop.fps = Loop.frames; Loop.frames = 0; Loop.fpsT = t; }
+      requestAnimationFrame(Loop.frame);
+    }
+  };
+
+  /* ---------- game controller ---------- */
+  var Game = G.Game = {
+    world: null,
+    mode: 'solo',              // solo | duo
+    dualView: false,           // 单机下 V 键开启双屏观察
+    debugTruth: false,
+    present: false,
+    init: function () {
+      G.Input.attach();
+      G.Renderer.resize();
+      G.UI.init();
+      window.addEventListener('resize', function () { G.Renderer.resize(); });
+      document.addEventListener('visibilitychange', function () { G.Audio.visibility(document.hidden); });
+      State.set('TITLE');
+      G.UI.overlay('title');
+      Loop.start();
+    },
+    reset: function (mode) {
+      Game.mode = mode || 'solo';
+      Game.dualView = false;
+      Game.debugTruth = false;
+      Game.world = G.World.create();
+      G.Level.build(Game.world);
+      G.Recognition.reset(Game.world);
+      G.Infection.reset(Game.world);
+      G.Subtitles.clear();
+      G.UI.overlay(null);
+      G.Audio.unlock();
+      G.Audio.startAmbient();
+      State.set('PLAY');
+      G.Subtitles.push(S.lines.wake, 'narration', 4);
+      G.Events.emit('reset', Game.world);
+    },
+    onPress: function (ev) {
+      var w = Game.world, ph = State.current;
+      if (ph === 'TITLE') { G.Audio.unlock(); State.set('BRIEF'); G.UI.overlay('brief'); return; }
+      if (ph === 'BRIEF') {
+        if (ev.code === 'Digit1' || ev.code === 'Numpad1') Game.reset('solo');
+        else if (ev.code === 'Digit2' || ev.code === 'Numpad2') Game.reset('duo');
+        return;
+      }
+      if (ph === 'RESULT') {
+        if (ev.code === 'KeyR' || ev.code === 'Space' || ev.code === 'Enter' || ev.code === 'Escape') {
+          State.set('TITLE'); G.UI.overlay('title');
+        }
+        return;
+      }
+      if (ph === 'CHOICE') {
+        if (/^(Digit|Numpad)[123]$/.test(ev.code)) Game.choose(parseInt(ev.code.slice(-1), 10));
+        return;
+      }
+      if (Game.systemKey(ev)) return;
+      G.Movement.onPress(w, ev);
+      G.Recognition.onPress(w, ev);
+    },
+    systemKey: function (ev) {
+      var w = Game.world;
+      switch (ev.code) {
+        case 'Escape': State.set('TITLE'); G.UI.overlay('title'); return true;
+        case 'Tab':
+          if (Game.mode === 'solo') {
+            w.controlled = w.controlled === 'p1' ? 'p2' : 'p1';
+            G.Subtitles.push('[接管] ' + (w.controlled === 'p1' ? 'A · 人马' : 'B · 木乃伊'), 'system', 1.6);
+          }
+          return true;
+        case 'KeyV':
+          Game.dualView = !Game.dualView;
+          G.Subtitles.push(Game.dualView ? '[双屏观察] 开' : '[双屏观察] 关', 'system', 1.4);
+          return true;
+        case 'KeyM': G.Audio.muteAll(C.silence.long); return true;
+        case 'KeyH': Game.debugTruth = !Game.debugTruth; return true;
+        case 'KeyT':   // 展演快进：同步进入相认阶段
+          if (w) {
+            w.p1.x = 620; w.p1.y = 500;
+            w.time = Math.max(w.time, C.timeline.candidates + 1);
+            G.Recognition.begin(w);
+          }
+          return true;
+        case 'KeyY':   // 展演快进：跳到登船抉择（补齐演示条件）
+          if (w) {
+            w.serum = Math.max(w.serum, 1);
+            w.qte.active = false; G.UI.hideQTE();
+            if (w.lockedId === w.suspectId && !w.flags.wrongPerson) {
+              w.flags.recognized = true;
+              G.Subtitles.push('[展演] 暗号已对上。', 'system', 2);
+            }
+            G.Recognition.forceVerify(w); G.Timeline.toChoice(w);
+          }
+          return true;
+        case 'KeyP':
+          Game.present = !Game.present;
+          document.body.classList.toggle('present', Game.present);
+          return true;
+      }
+      return false;
+    },
+    update: function (dt) {
+      var w = Game.world, ph = State.current;
+      var live = (ph === 'PLAY' || ph === 'RECOGNIZE' || ph === 'QTE' || ph === 'VERIFY' || ph === 'ESCAPE');
+      if (w && live) {
+        w.time += dt;
+        G.Movement.update(w, dt);
+        G.AI.update(w, dt);
+        G.Infection.update(w, dt);
+        G.Horror.update(w, dt);
+        G.Timeline.update(w, dt);
+        G.Recognition.update(w, dt);
+        G.Audio.update(w, dt);
+        Game.checkEnd(w);
+      }
+      G.Subtitles.update(dt);
+      if (w) G.UI.update(w);
+    },
+    checkEnd: function (w) {
+      if (State.current === 'RESULT' || w.flags.ending) return;
+      if (w.infection >= C.infection.max) return Game.end('horse');
+      if (w.time >= C.timeline.hardEnd && !w.flags.boarded) return Game.end('timeout');
+    },
+    choose: function (n) {
+      var w = Game.world;
+      w.flags.boarded = true; w.flags.ending = true;
+      G.Audio.muteAll(C.silence.short);
+      var ok = w.flags.recognized && !w.flags.wrongPerson;
+      if (n === 2) { w.humanity += C.humanity.abandon; G.Infection.applyMistake(w, true); return Game.end('alone'); }
+      if (n === 3) { w.humanity += C.humanity.give; return Game.end(ok ? 'stay' : 'wrong'); }
+      if (w.serum < 1) return Game.end('horse');       // 没找到血清 → 恢复不了人形
+      if (!ok) return Game.end('wrong');
+      w.flags.truth = true;                    // 恢复人形：两屏剪影短暂重合
+      G.Events.emit('truth', w);
+      setTimeout(function () { Game.end('true'); }, 950);
+    },
+    end: function (key) {
+      if (State.current === 'RESULT') return;
+      State.set('RESULT');
+      G.Audio.stopAmbient();
+      G.UI.overlay('ending', key);
+    }
+  };
+})();
+
+</script>
+<script>
+/* 唯一世界状态 + 实体工厂 + 感知投影层 */
+(function () {
+  var G = window.G = window.G || {};
+  var C = G.DATA.config;
+
+  /* ---------- entity factory ---------- */
+  var uid = 0;
+  var Entities = G.Entities = {
+    make: function (o) {
+      var e = {
+        id: o.id || ('e' + (++uid)), kind: o.kind || 'prop',
+        x: o.x || 0, y: o.y || 0, vx: 0, vy: 0,
+        r: o.r || 20, speed: o.speed || 0,
+        facing: { x: 1, y: 0 }, moving: false, alive: true,
+        trueForm: o.trueForm || 'human',
+        isLover: !!o.isLover, isFake: !!o.isFake,
+        ghostP1: !!o.ghostP1, ghostP2: !!o.ghostP2,
+        blink: o.blink || 0, phase: Math.random() * 6.28,
+        label: o.label || '', locked: false, follower: !!o.follower,
+        dashT: 0, dashCd: 0, hitCd: 0
+      };
+      return e;
+    },
+    player: function (id, x, y, form, speed) {
+      var e = Entities.make({ id: id, kind: 'player', x: x, y: y, trueForm: form, r: 22, speed: speed });
+      e.role = id;
+      return e;
+    }
+  };
+
+  /* ---------- world ---------- */
+  G.World = {
+    create: function () {
+      var p1 = Entities.player('p1', 170, 500, 'centaur', C.speed.p1);
+      var p2 = Entities.player('p2', 250, 560, 'mummy', C.speed.p2);
+      return {
+        time: 0, infection: 0, humanity: C.humanity.start, serum: C.serum.count,
+        entities: [p1, p2], byId: { p1: p1, p2: p2 },
+        p1: p1, p2: p2, controlled: 'p1',
+        walls: [], puddles: [], props: [], zones: [],
+        rocket: { x: 2230, y: 490, w: 120, h: 210 },
+        candidates: [], suspectId: null, lockedId: null, followers: [],
+        flags: {
+          recognized: false, wrongPerson: false, truth: false,
+          mapShifted: false, boarded: false, mirrorReveal: false,
+          silenceFlash: false, escape: false
+        },
+        recog: { stage: 'IDLE', p1Pick: 0, p2Pick: 0, aiK: 0, attempts: 0, mistakes: 0, verifyDone: false },
+        qte: { active: false, idx: 0, t0: 0, echoFollow: 0, echoAt: [], targetIsFake: false, result: null },
+        horror: { done: {}, hoofT: 0, flicker: 0 },
+        subs: [], prompt: '', aiReport: null, silencedUntil: 0,
+        stat: { dashes: 0, hits: 0, mistakes: 0 }
+      };
+    },
+    add: function (w, e) { w.entities.push(e); w.byId[e.id] = e; return e; },
+    playerOf: function (w, role) { return role === 'p1' ? w.p1 : w.p2; },
+    controlled: function (w) { return w.controlled === 'p1' ? w.p1 : w.p2; },
+    living: function (w, kind) {
+      return w.entities.filter(function (e) { return e.alive && (!kind || e.kind === kind); });
+    }
+  };
+
+  /* ---------- perception: 同一 world，两套视觉 ---------- */
+  /* 铁律：只改「画成什么」，绝不改坐标 / id / 碰撞 / 感染 */
+  G.Perception = {
+    ACTOR_KINDS: { player: 1, candidate: 1, zombie: 1, follower: 1 },
+    project: function (w, mode, viewerId) {
+      var truth = (mode === 'truth') || G.Game.debugTruth || w.flags.truth;
+      var out = [];
+      for (var i = 0; i < w.entities.length; i++) {
+        var e = w.entities[i];
+        if (!e.alive || !G.Perception.ACTOR_KINDS[e.kind]) continue;
+        var self = (e.id === viewerId);
+        var shape;
+        if (truth) shape = e.trueForm;
+        else if (self) shape = (viewerId === 'p1' ? 'centaur' : 'mummy');
+        else shape = (mode === 'mummy' ? 'centaur' : 'mummy');
+        var ghost = 0;
+        if (mode === 'centaur' && e.ghostP1) ghost = 1;
+        if (mode === 'mummy' && e.ghostP2) ghost = 1;
+        var apparent = !!e.moving || !!ghost;
+        out.push({
+          id: e.id, ref: e, x: e.x, y: e.y, r: e.r, shape: shape,
+          self: self, moving: !!e.moving, ghost: ghost, apparentMoving: apparent,
+          isLover: e.isLover, isFake: e.isFake, locked: e.locked,
+          follower: e.follower, trueForm: e.trueForm, phase: e.phase,
+          alpha: e.hitCd > 0 ? .55 : 1,
+          facing: e.facing
+        });
+      }
+      return out;
+    },
+    /* 视角相关的「在动」序列：P2 侧顺序反过来 —— 相认技巧②的信息差来源 */
+    movers: function (w, mode) {
+      var list = G.Perception.project(w, mode, mode === 'mummy' ? 'p2' : 'p1')
+        .filter(function (a) { return a.ref.kind === 'candidate' && a.apparentMoving; });
+      list.sort(function (a, b) {
+        var ka = a.x + a.y * .0001, kb = b.x + b.y * .0001;
+        return mode === 'mummy' ? kb - ka : ka - kb;
+      });
+      return list;
+    }
+  };
+})();
+
+</script>
+<script>
+/* 键位表 + 输入缓冲环（按键带时间戳，QTE 判定与帧率解耦） */
+(function () {
+  var G = window.G = window.G || {};
+  var C = G.DATA.config;
+
+  var MAP = {
+    KeyW: 'p1', KeyA: 'p1', KeyS: 'p1', KeyD: 'p1',
+    KeyQ: 'p1', KeyF: 'p1', Space: 'p1', ShiftLeft: 'p1', KeyR: 'p1',
+    ArrowUp: 'p2', ArrowDown: 'p2', ArrowLeft: 'p2', ArrowRight: 'p2',
+    KeyE: 'p2', Enter: 'p2', ShiftRight: 'p2',
+    Tab: 'sys', KeyV: 'sys', KeyM: 'sys', KeyH: 'sys', KeyP: 'sys',
+    Escape: 'sys', Digit1: 'sys', Digit2: 'sys', Digit3: 'sys',
+    Numpad1: 'sys', Numpad2: 'sys', Numpad3: 'sys'
+  };
+  var BLOCK = { Space: 1, Tab: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, Enter: 1 };
+
+  var Input = G.Input = {
+    down: {}, presses: [], buffer: [],
+    attach: function () {
+      window.addEventListener('keydown', function (e) {
+        if (BLOCK[e.code]) e.preventDefault();
+        if (e.repeat) return;                        // 重复判断交给浏览器：避免丢 keyup 后该键被永久吞掉
+        Input.down[e.code] = true;
+        var ev = { code: e.code, owner: MAP[e.code] || 'sys', t: performance.now() / 1000 };
+        Input.presses.push(ev);
+        Input.buffer.push(ev);
+        if (Input.buffer.length > 64) Input.buffer.shift();
+      });
+      window.addEventListener('keyup', function (e) { Input.down[e.code] = false; });
+      window.addEventListener('blur', function () { Input.down = {}; });
+      window.addEventListener('pointerdown', function () { G.Audio.unlock(); });
+    },
+    isDown: function (code) { return !!Input.down[code]; },
+    ownerOf: function (code) { return MAP[code] || 'sys'; },
+    drain: function () { var p = Input.presses; Input.presses = []; return p; },
+    takeBufferSince: function (t) {
+      return Input.buffer.filter(function (e) { return e.t >= t; });
+    },
+    /* 移动向量：返回归一化前的原始方向 */
+    axis: function (role) {
+      var x = 0, y = 0;
+      if (role === 'p1') {
+        if (Input.isDown('KeyA')) x -= 1;
+        if (Input.isDown('KeyD')) x += 1;
+        if (Input.isDown('KeyW')) y -= 1;
+        if (Input.isDown('KeyS')) y += 1;
+      } else {
+        if (Input.isDown('ArrowLeft')) x -= 1;
+        if (Input.isDown('ArrowRight')) x += 1;
+        if (Input.isDown('ArrowUp')) y -= 1;
+        if (Input.isDown('ArrowDown')) y += 1;
+      }
+      var len = Math.sqrt(x * x + y * y);
+      if (len > 0) { x /= len; y /= len; }
+      return { x: x, y: y, len: len };
+    }
+  };
+})();
+
+</script>
+<script>
+/* 程序化剪影 / 雾与光照 / 单 canvas 双 viewport / 水坑 truth 倒影 */
+(function () {
+  var G = window.G = window.G || {};
+  var C = G.DATA.config, U = G.utils, COL = C.colors;
+  var canvas, ctx, W = 0, H = 0, dpr = 1, tile = null;
+
+  function makeTile() {
+    var c = document.createElement('canvas'); c.width = c.height = 256;
+    var g = c.getContext('2d');
+    g.fillStyle = COL.floor; g.fillRect(0, 0, 256, 256);
+    g.strokeStyle = 'rgba(140,170,185,.10)'; g.lineWidth = 1;
+    for (var i = 0; i <= 256; i += 32) {
+      g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke();
+      g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke();
+    }
+    var rnd = U.rnd(9721);
+    for (var n = 0; n < 460; n++) {
+      g.fillStyle = 'rgba(170,190,200,' + (rnd() * .055).toFixed(3) + ')';
+      g.fillRect(rnd() * 256, rnd() * 256, 1.5, 1.5);
+    }
+    return c;
+  }
+
+  /* ---------- 剪影 ---------- */
+  function face(g, x, y, r) {
+    // 「同脸」：所有活物共用一张脸，只有体态暴露真相
+    g.fillStyle = '#010305';
+    g.beginPath(); g.ellipse(x, y, r, r * 1.15, 0, 0, 6.2832); g.fill();
+    g.strokeStyle = 'rgba(190,205,215,.3)'; g.lineWidth = .8; g.stroke();
+    g.fillStyle = 'rgba(210,220,225,.45)';
+    g.fillRect(x - r * .45, y - r * .1, 1.5, 1.5);
+    g.fillRect(x + r * .28, y - r * .1, 1.5, 1.5);
+  }
+  function bodyCentaur(g) {
+    g.beginPath(); g.ellipse(-2, 4, 20, 10, 0, 0, 6.2832); g.fill();           // 马身
+    g.fillRect(-16, 10, 4.5, 16); g.fillRect(-6, 11, 4.5, 15);
+    g.fillRect(7, 11, 4.5, 15); g.fillRect(14, 10, 4.5, 16);                  // 四蹄
+    g.beginPath(); g.moveTo(15, 0); g.lineTo(25, 12); g.lineTo(21, 14); g.lineTo(12, 4); g.fill();
+    g.beginPath(); g.moveTo(-10, 2); g.lineTo(-4, -20); g.lineTo(6, -20); g.lineTo(10, 2); g.fill();
+    g.fillRect(-9, -19, 3.5, 12); g.fillRect(5, -19, 3.5, 12);
+    face(g, 1, -27, 6.5);
+  }
+  function bodyMummy(g) {
+    g.beginPath(); g.moveTo(-9, -18); g.lineTo(9, -18); g.lineTo(11, 20); g.lineTo(-11, 20); g.closePath(); g.fill();
+    g.fillRect(-13, -16, 3.5, 22); g.fillRect(9, -16, 3.5, 22);
+    g.fillRect(-7, 19, 5, 9); g.fillRect(2, 19, 5, 9);
+    face(g, 0, -25, 7.5);
+    g.strokeStyle = 'rgba(205,212,205,.42)'; g.lineWidth = 1.1;
+    for (var i = 0; i < 8; i++) {
+      var y = -16 + i * 5;
+      g.beginPath(); g.moveTo(-11, y); g.lineTo(11, y + 2.6); g.stroke();
+    }
+    g.beginPath(); g.moveTo(11, 2); g.quadraticCurveTo(22, 8, 18, 19); g.stroke();
+  }
+  function bodyHuman(g) {
+    g.beginPath(); g.moveTo(-8, -16); g.lineTo(8, -16); g.lineTo(9, 20); g.lineTo(-9, 20); g.closePath(); g.fill();
+    g.fillRect(-12, -15, 3.5, 20); g.fillRect(8, -15, 3.5, 20);
+    g.fillRect(-7, 19, 5, 10); g.fillRect(2, 19, 5, 10);
+    face(g, 0, -23, 7);
+  }
+  function bodyZombie(g) {
+    g.save(); g.rotate(.16);
+    g.beginPath(); g.moveTo(-9, -14); g.lineTo(8, -18); g.lineTo(10, 20); g.lineTo(-10, 18); g.closePath(); g.fill();
+    g.fillRect(-16, -12, 14, 3.5); g.fillRect(6, -16, 14, 3.5);
+    face(g, -1, -22, 7);
+    g.restore();
+  }
+  function bodyFake(g) {
+    g.save(); g.rotate(-.1);
+    g.beginPath(); g.moveTo(-11, -18); g.lineTo(8, -15); g.lineTo(13, 21); g.lineTo(-8, 22); g.closePath(); g.fill();
+    g.fillRect(-15, -14, 4, 26); g.fillRect(9, -13, 4, 22);
+    face(g, -1, -25, 7.5);
+    g.strokeStyle = 'rgba(190,105,95,.5)'; g.lineWidth = 1.4;
+    for (var i = 0; i < 5; i++) { g.beginPath(); g.moveTo(-10, -10 + i * 7); g.lineTo(11, -4 + i * 7); g.stroke(); }
+    g.restore();
+  }
+
+  function drawActor(g, a, px, py, s, opts) {
+    var bob = a.apparentMoving ? Math.sin(a.phase + performance.now() / 340) * 2.2 : 0;
+    py += bob;
+    g.save();
+    g.translate(px, py);
+    g.globalAlpha = a.alpha;
+    g.fillStyle = 'rgba(0,0,0,.55)';
+    g.beginPath(); g.ellipse(0, 27 * s, 22 * s, 6 * s, 0, 0, 6.2832); g.fill();
+    g.scale(s, s);
+
+    // 选中 / 自己：只画环，不画实心球
+    if (opts.selected || a.locked || opts.self) {
+      g.strokeStyle = a.self ? 'rgba(200,161,90,.55)' : (a.locked ? 'rgba(111,138,145,.9)' : 'rgba(200,161,90,.9)');
+      g.lineWidth = 1.5;
+      g.beginPath(); g.ellipse(0, 4, 29, 34, 0, 0, 6.2832); g.stroke();
+    }
+    g.fillStyle = a.self ? 'rgba(200,161,90,.045)' : 'rgba(150,180,195,.055)';
+    g.beginPath(); g.ellipse(0, 4, 29, 34, 0, 0, 6.2832); g.fill();
+
+    // 边缘光：让纯黑剪影从暗背景里浮出来
+    g.shadowColor = a.self ? 'rgba(200,161,90,.85)' : (a.apparentMoving ? 'rgba(168,196,208,.8)' : 'rgba(140,168,180,.55)');
+    g.shadowBlur = a.self ? 14 : 9;
+    g.fillStyle = a.self ? '#0b1118' : COL.silhouette;
+    var sh = a.shape;
+    if (sh === 'centaur') bodyCentaur(g);
+    else if (sh === 'mummy') bodyMummy(g);
+    else if (sh === 'zombie' || sh === 'infected') bodyZombie(g);
+    else if (sh === 'fake') bodyFake(g);
+    else bodyHuman(g);
+    g.shadowBlur = 0;
+    g.restore();
+
+    g.save();
+    g.textAlign = 'center'; g.font = (11 * Math.max(s, .8)).toFixed(1) + 'px "PingFang SC",sans-serif';
+    if (a.self) {
+      g.fillStyle = COL.amber;
+      g.fillText(opts.tag, px, py - 46 * s);
+    } else if (opts.index > 0) {
+      g.fillStyle = opts.selected ? COL.amber : 'rgba(205,215,220,.85)';
+      g.fillText(String(opts.index), px, py - 44 * s);
+      if (a.apparentMoving) {
+        g.fillStyle = 'rgba(200,161,90,.8)';
+        g.beginPath(); g.arc(px, py - 34 * s, 2, 0, 6.2832); g.fill();
+      }
+    }
+    g.restore();
+  }
+
+  /* ---------- 静态场景 ---------- */
+  function drawWalls(g, w, cam, viewW, viewH, scale, vp) {
+    var left = cam.x - viewW / 2, top = cam.y - viewH / 2;
+    for (var i = 0; i < w.walls.length; i++) {
+      var r = w.walls[i];
+      if (r.x + r.w < left - 40 || r.x > left + viewW + 40) continue;
+      var x = vp.x + vp.w / 2 + (r.x - cam.x) * scale;
+      var y = vp.y + vp.h / 2 + (r.y - cam.y) * scale;
+      var ww = r.w * scale, hh = r.h * scale;
+      g.fillStyle = COL.wall; g.fillRect(x, y, ww, hh);
+      g.strokeStyle = 'rgba(150,180,195,.18)'; g.lineWidth = 1; g.strokeRect(x + .5, y + .5, ww - 1, hh - 1);
+      if (r.kind === 'bed') {
+        g.fillStyle = 'rgba(160,180,190,.09)';
+        g.fillRect(x + 5, y + 5, ww - 10, hh - 10);
+        g.strokeStyle = 'rgba(165,185,195,.16)';
+        g.beginPath(); g.moveTo(x + ww * .3, y); g.lineTo(x + ww * .3, y + hh); g.stroke();
+      }
+      if (r.kind === 'curtain') {
+        g.strokeStyle = 'rgba(160,180,190,.15)';
+        for (var k = 6; k < ww; k += 9) { g.beginPath(); g.moveTo(x + k, y); g.lineTo(x + k, y + hh); g.stroke(); }
+      }
+    }
+  }
+
+  function drawZones(g, w, cam, scale, vp) {
+    g.save(); g.textAlign = 'center';
+    g.font = '13px "PingFang SC",sans-serif';
+    for (var i = 0; i < w.zones.length; i++) {
+      var z = w.zones[i];
+      var x = vp.x + vp.w / 2 + (z.x - cam.x) * scale;
+      var y = vp.y + vp.h / 2 + (z.y - cam.y) * scale;
+      if (x < vp.x - 100 || x > vp.x + vp.w + 100) continue;
+      g.fillStyle = 'rgba(165,185,195,.32)';
+      g.fillText(z.name, x, y);
+    }
+    g.restore();
+  }
+
+  function drawPuddle(g, w, a, cam, scale, vp, mode, viewerId) {
+    var px = vp.x + vp.w / 2 + (a.x - cam.x) * scale;
+    var py = vp.y + vp.h / 2 + (a.y - cam.y) * scale;
+    var rx = a.r * scale, ry = a.r * .42 * scale;
+    if (px < vp.x - rx * 2 || px > vp.x + vp.w + rx * 2) return;
+    g.save();
+    g.beginPath(); g.ellipse(px, py, rx, ry, 0, 0, 6.2832); g.clip();
+    g.fillStyle = 'rgba(88,122,136,.28)'; g.fillRect(px - rx, py - ry, rx * 2, ry * 2);
+    var reveal = w.flags.mirrorReveal;
+    var actors = G.Perception.project(w, 'truth', viewerId);
+    for (var i = 0; i < actors.length; i++) {
+      var e = actors[i];
+      if (e.ref.kind !== 'candidate' && e.ref.kind !== 'player') continue;
+      var isLocked = !!w.lockedId && e.id === w.lockedId;
+      var ex;
+      if (reveal && isLocked) {
+        ex = px;                                  // 验证时把锁定目标固定映在坑中央
+      } else {
+        var lim = reveal ? 3 : 1.6;
+        if (Math.abs(e.x - a.x) > a.r * lim || Math.abs(e.y - a.y) > a.r * (lim * .8)) continue;
+        ex = vp.x + vp.w / 2 + (e.x - cam.x) * scale;
+      }
+      g.save();
+      g.globalAlpha = (reveal && isLocked) ? .95 : (reveal ? .55 : .32);
+      g.translate(ex, py + ry * .2); g.scale(scale * .7, -scale * .5);
+      g.fillStyle = e.id === w.suspectId ? 'rgba(205,220,225,.95)' : 'rgba(150,170,180,.7)';
+      if (e.trueForm === 'centaur') bodyCentaur(g);
+      else if (e.trueForm === 'mummy') bodyMummy(g);
+      else if (e.trueForm === 'fake') bodyFake(g);
+      else bodyHuman(g);
+      g.restore();
+    }
+    g.restore();
+    if (reveal && w.lockedId) {
+      g.save();
+      g.font = '10px "PingFang SC",sans-serif'; g.textAlign = 'center';
+      g.fillStyle = 'rgba(140,180,195,.9)';
+      g.fillText('倒 影 · 真 形', px, py - ry - 10);
+      g.restore();
+    }
+    g.save();
+    g.strokeStyle = reveal ? 'rgba(120,170,190,.8)' : 'rgba(110,150,170,.4)';
+    g.lineWidth = 1.2; g.beginPath(); g.ellipse(px, py, rx, ry, 0, 0, 6.2832); g.stroke();
+    g.restore();
+  }
+
+  function drawRocket(g, w, cam, scale, vp) {
+    var r = w.rocket;
+    var x = vp.x + vp.w / 2 + (r.x - cam.x) * scale;
+    var y = vp.y + vp.h / 2 + (r.y - cam.y) * scale;
+    if (x < vp.x - 200 || x > vp.x + vp.w + 200) return;
+    var rw = r.w * scale, rh = r.h * scale;
+    g.save();
+    var glow = g.createRadialGradient(x, y, 4, x, y, rh * .9);
+    glow.addColorStop(0, 'rgba(200,161,90,.24)'); glow.addColorStop(1, 'rgba(200,161,90,0)');
+    g.fillStyle = glow; g.fillRect(x - rh, y - rh, rh * 2, rh * 2);
+    g.fillStyle = '#101a22'; g.strokeStyle = 'rgba(200,161,90,.65)'; g.lineWidth = 1.6;
+    g.beginPath();
+    g.moveTo(x, y - rh / 2); g.lineTo(x + rw / 2, y + rh * .18); g.lineTo(x + rw / 2, y + rh / 2);
+    g.lineTo(x - rw / 2, y + rh / 2); g.lineTo(x - rw / 2, y + rh * .18); g.closePath();
+    g.fill(); g.stroke();
+    g.fillStyle = 'rgba(200,161,90,.7)';
+    g.beginPath(); g.arc(x, y - rh * .12, 5 * scale + 2, 0, 6.2832); g.fill();
+    g.fillStyle = 'rgba(150,175,185,.2)'; g.fillRect(x - rw * .8, y + rh / 2, rw * 1.6, 6);
+    g.restore();
+  }
+
+  function drawLighting(g, vp, px, py, muted) {
+    var rad = Math.max(vp.w, vp.h) * .92;
+    var grd = g.createRadialGradient(px, py, rad * .18, px, py, rad);
+    grd.addColorStop(0, 'rgba(0,0,0,0)');
+    grd.addColorStop(.45, 'rgba(0,0,0,.08)');
+    grd.addColorStop(1, muted ? 'rgba(0,0,0,.80)' : 'rgba(0,0,0,.56)');
+    g.fillStyle = grd; g.fillRect(vp.x, vp.y, vp.w, vp.h);
+    var t = performance.now() / 1000;
+    g.save(); g.globalAlpha = .055;
+    for (var i = 0; i < 3; i++) {
+      var yy = vp.y + vp.h * (.25 + i * .26) + Math.sin(t * .25 + i) * 18;
+      var fg = g.createLinearGradient(vp.x, yy - 40, vp.x, yy + 40);
+      fg.addColorStop(0, 'rgba(130,160,175,0)');
+      fg.addColorStop(.5, 'rgba(150,180,195,.9)');
+      fg.addColorStop(1, 'rgba(130,160,175,0)');
+      g.fillStyle = fg; g.fillRect(vp.x, yy - 40, vp.w, 80);
+    }
+    g.restore();
+  }
+
+  /* ---------- 单个 viewport ---------- */
+  function renderView(w, vp, mode, viewerId, tag) {
+    var duo = (G.Game.mode === 'duo' || G.Game.dualView);
+    var viewW = duo ? C.view.duoWidth : C.view.soloWidth;
+    var scale = vp.w / viewW;
+    var viewH = vp.h / scale;
+    var focus = G.World.playerOf(w, viewerId);
+    var cam = duo
+      ? { x: (w.p1.x + w.p2.x) / 2, y: (w.p1.y + w.p2.y) / 2 }
+      : { x: G.World.controlled(w).x, y: G.World.controlled(w).y };
+    cam.x = U.clamp(cam.x, viewW / 2, C.world.w - viewW / 2);
+    cam.y = U.clamp(cam.y, viewH / 2, Math.max(viewH / 2, C.world.h - viewH / 2));
+
+    ctx.save();
+    ctx.beginPath(); ctx.rect(vp.x, vp.y, vp.w, vp.h); ctx.clip();
+    ctx.fillStyle = COL.bg; ctx.fillRect(vp.x, vp.y, vp.w, vp.h);
+
+    if (tile) {
+      var pat = ctx.createPattern(tile, 'repeat');
+      ctx.save();
+      ctx.translate(vp.x + vp.w / 2 - cam.x * scale, vp.y + vp.h / 2 - cam.y * scale);
+      ctx.scale(scale, scale);
+      ctx.fillStyle = pat;
+      ctx.fillRect(cam.x - viewW / 2 - 300, cam.y - viewH / 2 - 300, viewW + 600, viewH + 600);
+      ctx.restore();
+    }
+
+    drawZones(ctx, w, cam, scale, vp);
+    drawWalls(ctx, w, cam, viewW, viewH, scale, vp);
+    drawRocket(ctx, w, cam, scale, vp);
+    for (var p = 0; p < w.puddles.length; p++) drawPuddle(ctx, w, w.puddles[p], cam, scale, vp, mode, viewerId);
+
+    var actors = G.Perception.project(w, mode, viewerId);
+    actors.sort(function (a, b) { return a.y - b.y; });
+    for (var i = 0; i < actors.length; i++) {
+      var a = actors[i];
+      var px = vp.x + vp.w / 2 + (a.x - cam.x) * scale;
+      var py = vp.y + vp.h / 2 + (a.y - cam.y) * scale;
+      if (px < vp.x - 80 || px > vp.x + vp.w + 80 || py < vp.y - 100 || py > vp.y + vp.h + 100) continue;
+      var idx = 0, selected = false;
+      if (G.Recognition && G.Recognition.indexFor) idx = G.Recognition.indexFor(w, mode, a.id);
+      if (G.Recognition && G.Recognition.isPicked) selected = G.Recognition.isPicked(w, mode, a.id);
+      drawActor(ctx, a, px, py, scale * 1.65 * (a.r / 20), { self: a.self, tag: tag, index: idx, selected: selected });
+    }
+
+    var fpx = vp.x + vp.w / 2 + (focus.x - cam.x) * scale;
+    var fpy = vp.y + vp.h / 2 + (focus.y - cam.y) * scale;
+    drawLighting(ctx, vp, fpx, fpy, G.Audio.isMuted());
+
+    ctx.save();
+    ctx.font = '11px "PingFang SC",sans-serif'; ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(200,161,90,.6)';
+    ctx.fillText(tag + ' · ' + (mode === 'truth' ? '真形' : (mode === 'centaur' ? '你看见的：都是她' : '你看见的：都是他')), vp.x + 16, vp.y + vp.h - 18);
+    ctx.restore();
+    ctx.restore();
+  }
+
+  function idle() {
+    ctx.fillStyle = COL.bg; ctx.fillRect(0, 0, W, H);
+    var t = performance.now() / 1000;
+    for (var i = 0; i < 7; i++) {
+      var x = W * (.12 + i * .13), y = H * .62 + Math.sin(t * .4 + i) * 12;
+      ctx.save(); ctx.globalAlpha = .3; ctx.translate(x, y); ctx.scale(2.4, 2.4);
+      ctx.shadowColor = 'rgba(140,170,185,.6)'; ctx.shadowBlur = 8;
+      ctx.fillStyle = COL.silhouette;
+      if (i % 2) bodyMummy(ctx); else bodyCentaur(ctx);
+      ctx.restore();
+    }
+    var grd = ctx.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, W * .7);
+    grd.addColorStop(0, 'rgba(0,0,0,0)'); grd.addColorStop(1, 'rgba(0,0,0,.88)');
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+  }
+
+  G.Renderer = {
+    resize: function () {
+      canvas = U.el('game'); ctx = canvas.getContext('2d');
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = window.innerWidth; H = window.innerHeight;
+      canvas.width = Math.floor(W * dpr); canvas.height = Math.floor(H * dpr);
+      canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (!tile) tile = makeTile();
+    },
+    renderAll: function () {
+      if (!ctx) return;
+      var w = G.Game.world;
+      if (!w || G.State.current === 'TITLE' || G.State.current === 'BRIEF') { idle(); return; }
+      var duo = (G.Game.mode === 'duo' || G.Game.dualView);
+      if (duo) {
+        renderView(w, { x: 0, y: 0, w: W / 2, h: H }, 'centaur', 'p1', 'A');
+        renderView(w, { x: W / 2, y: 0, w: W / 2, h: H }, 'mummy', 'p2', 'B');
+      } else {
+        renderView(w, { x: 0, y: 0, w: W, h: H }, 'centaur', 'p1', 'A');
+      }
+    }
+  };
+})();
+
+</script>
+<script>
+/* Web Audio 全实时合成：零音频素材；「突然静音」是主要惊吓手段 */
+(function () {
+  var G = window.G = window.G || {};
+  var C = G.DATA.config;
+
+  var Synth = G.Synth = {
+    ctx: null, master: null, noise: null,
+    init: function (ctx, master) {
+      Synth.ctx = ctx; Synth.master = master;
+      var len = Math.floor(ctx.sampleRate * 1);
+      var buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      var d = buf.getChannelData(0);
+      for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      Synth.noise = buf;
+    },
+    env: function (node, t, a, d, peak) {
+      node.gain.setValueAtTime(.0001, t);
+      node.gain.exponentialRampToValueAtTime(peak, t + a);
+      node.gain.exponentialRampToValueAtTime(.0001, t + a + d);
+    },
+    tone: function (freq, dur, type, vol, dest) {
+      var ctx = Synth.ctx; if (!ctx) return;
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type || 'sine'; o.frequency.setValueAtTime(freq, ctx.currentTime);
+      o.connect(g); g.connect(dest || Synth.master);
+      Synth.env(g, ctx.currentTime, .008, dur, vol || .1);
+      o.start(); o.stop(ctx.currentTime + dur + .06);
+    },
+    burst: function (dur, freq, q, vol, type) {
+      var ctx = Synth.ctx; if (!ctx || !Synth.noise) return;
+      var src = ctx.createBufferSource(); src.buffer = Synth.noise;
+      var f = ctx.createBiquadFilter(); f.type = type || 'lowpass';
+      f.frequency.setValueAtTime(freq, ctx.currentTime); f.Q.value = q || 1;
+      var g = ctx.createGain();
+      src.connect(f); f.connect(g); g.connect(Synth.master);
+      Synth.env(g, ctx.currentTime, .005, dur, vol || .1);
+      src.start(); src.stop(ctx.currentTime + dur + .08);
+    },
+    heartbeat: function () {
+      Synth.tone(58, .13, 'sine', .22);
+      setTimeout(function () { Synth.tone(52, .16, 'sine', .16); }, 175);
+    },
+    hoof: function (near) {
+      Synth.burst(.075, 320, .8, near ? .17 : .075);
+      Synth.tone(64, .11, 'sine', near ? .16 : .07);
+      setTimeout(function () { Synth.burst(.05, 260, .8, near ? .09 : .04); }, 135);
+    },
+    bandage: function () { Synth.burst(.34, 1500, 2.2, .035, 'bandpass'); },
+    secret: function (clean) {
+      Synth.tone(clean ? 494 : 466, .09, 'square', clean ? .11 : .085);
+      if (!clean) setTimeout(function () { Synth.tone(455, .1, 'square', .05); }, 90);
+    },
+    glitch: function () { Synth.burst(.06, 2600, 1.4, .05, 'highpass'); },
+    drone: function (start) {
+      var ctx = Synth.ctx; if (!ctx) return;
+      if (start) {
+        if (Synth._drone) return;
+        var g = ctx.createGain(); g.gain.value = .014; g.connect(Synth.master);
+        var a = ctx.createOscillator(), b = ctx.createOscillator();
+        a.frequency.value = 55; b.frequency.value = 55.4;
+        a.connect(g); b.connect(g); a.start(); b.start();
+        Synth._drone = { g: g, a: a, b: b };
+      } else if (Synth._drone) {
+        try { Synth._drone.a.stop(); Synth._drone.b.stop(); } catch (e) { }
+        Synth._drone = null;
+      }
+    }
+  };
+
+  G.Audio = {
+    ctx: null, master: null, unlocked: false, muted: false,
+    ambientOn: false, silenceUntil: 0, nextBeat: 0, nextHoof: 0,
+    unlock: function () {
+      if (G.Audio.unlocked) {
+        if (G.Audio.ctx && G.Audio.ctx.state === 'suspended') G.Audio.ctx.resume();
+        return;
+      }
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      var ctx = new AC();
+      var master = ctx.createGain(); master.gain.value = .85; master.connect(ctx.destination);
+      G.Audio.ctx = ctx; G.Audio.master = master; G.Audio.unlocked = true;
+      Synth.init(ctx, master);
+      if (ctx.state === 'suspended') ctx.resume();
+      G.Audio.nextBeat = ctx.currentTime + .1;
+      G.Audio.nextHoof = ctx.currentTime + 1.2;
+    },
+    startAmbient: function () { G.Audio.ambientOn = true; Synth.drone(true); },
+    stopAmbient: function () { G.Audio.ambientOn = false; Synth.drone(false); },
+    visibility: function (hidden) {
+      if (!G.Audio.ctx) return;
+      try { hidden ? G.Audio.ctx.suspend() : G.Audio.ctx.resume(); } catch (e) { }
+    },
+    isMuted: function () { return G.Audio.muted; },
+    muteAll: function (dur) {
+      if (!G.Audio.unlocked) return;
+      var A = G.Audio, ctx = A.ctx, t = ctx.currentTime;
+      A.muted = true;
+      A.master.gain.cancelScheduledValues(t);
+      A.master.gain.setValueAtTime(.0001, t);     // 瞬时归零，不做渐变
+      A.silenceUntil = t + (dur || C.silence.long);
+      G.Subtitles.push(G.DATA.script.lines.firstSilence, 'onomat', (dur || C.silence.long) + .2);
+      G.Events.emit('silence', true);
+    },
+    unmute: function () {
+      var A = G.Audio, ctx = A.ctx;
+      A.muted = false;
+      A.master.gain.cancelScheduledValues(ctx.currentTime);
+      A.master.gain.setValueAtTime(.85, ctx.currentTime);
+      Synth.hoof(true);
+      G.Events.emit('silence', false);
+    },
+    update: function (w, dt) {
+      var A = G.Audio;
+      if (!A.unlocked || !A.ctx) return;
+      var t = A.ctx.currentTime;
+      if (A.muted) { if (t >= A.silenceUntil) A.unmute(); return; }
+      if (!A.ambientOn) return;
+      var bpm = 60 + (w.infection / C.infection.max) * 62;
+      if (t >= A.nextBeat) { Synth.heartbeat(); A.nextBeat = t + 60 / bpm; }
+      if (w.time > 12 && t >= A.nextHoof) {
+        Synth.hoof(w.infection > 55);
+        A.nextHoof = t + Math.max(.85, 2.8 - w.infection / 55);
+      }
+    }
+  };
+})();
+
+</script>
+<script>
+/* 移动 / 感染数值 / 拟声字幕 / 恐怖调度 / 单机 AI 同伴 */
+(function () {
+  var G = window.G = window.G || {};
+  var C = G.DATA.config, S = G.DATA.script, U = G.utils;
+
+  function hitWall(w, x, y, r) {
+    for (var i = 0; i < w.walls.length; i++) {
+      var b = w.walls[i];
+      if (x > b.x - r && x < b.x + b.w + r && y > b.y - r && y < b.y + b.h + r) return true;
+    }
+    return false;
+  }
+  function moveWithCollision(w, e, dx, dy) {
+    var nx = e.x + dx, ny = e.y + dy;
+    if (!hitWall(w, nx, e.y, e.r)) e.x = nx;
+    if (!hitWall(w, e.x, ny, e.r)) e.y = ny;
+    e.x = U.clamp(e.x, C.world.pad, C.world.w - C.world.pad);
+    e.y = U.clamp(e.y, C.world.pad, C.world.h - C.world.pad);
+  }
+  function keyboardRole(w, role) {
+    return G.Game.mode === 'duo' || w.controlled === role;
+  }
+
+  /* ---------- movement ---------- */
+  var Movement = G.Movement = {
+    onPress: function (w, ev) {
+      if (ev.code === 'ShiftLeft' && keyboardRole(w, 'p1')) Movement.dash(w, w.p1);
+      if (ev.code === 'ShiftRight' && keyboardRole(w, 'p2')) Movement.dash(w, w.p2);
+    },
+    dash: function (w, e) {
+      if (e.dashCd > 0 || w.time < 1) return;
+      e.dashT = C.speed.dashTime; e.dashCd = C.speed.dashCd;
+      w.infection = U.clamp(w.infection + C.infection.dash, 0, C.infection.max);
+      w.stat.dashes++;
+      G.Synth.hoof(true);
+      G.Subtitles.push('咚——', 'onomat', .8);
+    },
+    update: function (w, dt) {
+      var roles = ['p1', 'p2'];
+      for (var i = 0; i < roles.length; i++) {
+        var role = roles[i], e = G.World.playerOf(w, role);
+        e.dashT = Math.max(0, e.dashT - dt);
+        e.dashCd = Math.max(0, e.dashCd - dt);
+        e.hitCd = Math.max(0, e.hitCd - dt);
+        if (!keyboardRole(w, role)) continue;                  // 另一个交给 AI
+        var a = G.Input.axis(role);
+        if (a.len === 0) { e.moving = false; e.vx = e.vy = 0; continue; }
+
+        // 「不能后退」：感染越深，反向分量被吞得越彻底
+        var along = a.x * e.facing.x + a.y * e.facing.y;
+        if (along < 0) {
+          if (w.infection > C.noBack.sideOnly) { a.x = 0; a.y = 0; }
+          else if (w.infection > C.noBack.free) {
+            a.x -= along * e.facing.x; a.y -= along * e.facing.y;
+            var l2 = Math.sqrt(a.x * a.x + a.y * a.y);
+            if (l2 > 0) { a.x /= l2; a.y /= l2; }
+          }
+        }
+        if (a.x !== 0 || a.y !== 0) {
+          e.facing.x = a.x; e.facing.y = a.y;
+          var mul = e.dashT > 0 ? C.speed.dash / e.speed : 1;
+          var dx = a.x * e.speed * mul * dt, dy = a.y * e.speed * mul * dt;
+          moveWithCollision(w, e, dx, dy);
+          e.vx = a.x; e.vy = a.y; e.moving = true;
+        } else e.moving = false;
+      }
+
+      // 丧尸缓慢逼近
+      var zs = G.World.living(w, 'zombie');
+      for (var z = 0; z < zs.length; z++) {
+        var zo = zs[z];
+        var target = U.dist(zo, w.p1) < U.dist(zo, w.p2) ? w.p1 : w.p2;
+        var d = U.dist(zo, target);
+        if (d > 620 || d < 1) { zo.moving = false; continue; }
+        var vx = (target.x - zo.x) / d, vy = (target.y - zo.y) / d;
+        moveWithCollision(w, zo, vx * 46 * dt, vy * 46 * dt);
+        zo.facing.x = vx; zo.facing.y = vy; zo.moving = true;
+        if (d < zo.r + 26) {
+          if (target.hitCd <= 0) {
+            target.hitCd = 1.2;
+            w.infection = U.clamp(w.infection + C.infection.touch, 0, C.infection.max);
+            w.stat.hits++;
+            G.Synth.glitch();
+          }
+          moveWithCollision(w, zo, -vx * 40 * dt, -vy * 40 * dt);
+        }
+      }
+
+      // 假爱人 / 蹄声剪影跟随
+      for (var f = 0; f < w.followers.length; f++) {
+        var fo = w.followers[f];
+        var ddx = w.p1.x - 96 - f * 46 - fo.x, ddy = w.p1.y + 20 - fo.y;
+        var dd = Math.sqrt(ddx * ddx + ddy * ddy);
+        if (dd > 8) {
+          moveWithCollision(w, fo, ddx / dd * 62 * dt, ddy / dd * 62 * dt);
+          fo.moving = true;
+        } else fo.moving = false;
+      }
+
+      // 血清拾取
+      for (var k = 0; k < w.entities.length; k++) {
+        var pk = w.entities[k];
+        if (pk.kind !== 'pickup' || !pk.alive) continue;
+        if (U.dist(pk, w.p1) < 46 || U.dist(pk, w.p2) < 46) {
+          pk.alive = false; w.serum++;
+          G.Synth.secret(true);
+          G.Subtitles.push('拾到一支血清。标签上写着：只认人形。', 'system', 2.6);
+        }
+      }
+
+      // 提前登船：完成验证 + 抵达火箭
+      if (w.flags.verifyDone && w.p1.x > w.rocket.x - 150 && G.State.current !== 'CHOICE' && G.State.current !== 'RESULT') {
+        G.Timeline.toChoice(w);
+      }
+    }
+  };
+
+  /* ---------- infection / humanity ---------- */
+  G.Infection = {
+    reset: function (w) { w.infection = 0; w.humanity = C.humanity.start; w.serum = 0; },
+    update: function (w, dt) {
+      var mul = w.time >= C.timeline.accelerateAt ? C.infection.accelerateMul : 1;
+      w.infection = U.clamp(w.infection + C.infection.base * mul * dt, 0, C.infection.max);
+      w.humanity = U.clamp(w.humanity, 0, 100);
+    },
+    applyMistake: function (w, silent) {
+      w.infection = U.clamp(w.infection + C.infection.mistake, 0, C.infection.max);
+      w.humanity = U.clamp(w.humanity + C.humanity.mistake, 0, 100);
+      w.stat.mistakes++; w.recog.mistakes++;
+      G.Synth.glitch();
+      if (!silent) {
+        G.Subtitles.push(S.lines.lockWrong, 'narration', 2.6);
+        var fo = G.Entities.make({ kind: 'follower', x: w.p1.x - 110, y: w.p1.y + 20, trueForm: 'fake', r: 20, follower: true });
+        G.World.add(w, fo); w.followers.push(fo);
+      }
+    }
+  };
+
+  /* ---------- subtitles ---------- */
+  G.Subtitles = {
+    clear: function () { var w = G.Game.world; if (w) w.subs = []; },
+    push: function (text, kind, dur) {
+      var w = G.Game.world; if (!w) return;
+      w.subs.push({ text: text, kind: kind || 'narration', until: w.time + (dur || 2.6) });
+      if (w.subs.length > 3) w.subs.shift();
+    },
+    update: function (dt) {
+      var w = G.Game.world; if (!w) return;
+      w.subs = w.subs.filter(function (s) { return s.until > w.time; });
+    }
+  };
+
+  /* ---------- horror ---------- */
+  var EVENTS = [
+    { t: 18, id: 'hoof', fn: function (w) { G.Subtitles.push(S.lines.hoofBehind, 'onomat', 2.4); G.Subtitles.push(S.lines.hoofHint, 'narration', 3.2); } },
+    { t: 50, id: 'silence1', fn: function (w) { G.Audio.muteAll(C.silence.long); G.Subtitles.push(S.lines.sameFace, 'narration', 3); } },
+    { t: 118, id: 'echo', fn: function (w) { G.Subtitles.push(S.lines.echoes[0], 'onomat', 2.4); G.Synth.secret(false); } },
+    { t: 170, id: 'silence2', fn: function (w) {
+        G.Audio.muteAll(C.silence.short);
+        G.Subtitles.push(S.lines.qteEcho, 'narration', 3);
+        w.candidates.forEach(function (id) {
+          var e = w.byId[id];
+          if (e && e.alive) { e.x += (w.p1.x - e.x) * .12; }
+        });
+      } },
+    { t: 205, id: 'shadow', fn: function (w) {
+        var sh = G.Entities.make({ kind: 'follower', x: w.p1.x - 130, y: w.p1.y + 10, trueForm: 'centaur', r: 21, follower: true });
+        G.World.add(w, sh); w.followers.push(sh);
+        G.Subtitles.push('身后多了一个不动的影子。', 'narration', 3);
+      } },
+    { t: 220, id: 'mapShift', fn: function (w) {
+        w.flags.mapShifted = true;
+        if (w.walls.length) { var b = w.walls[w.walls.length - 1]; b.x -= 150; b.y += 90; }
+        G.Subtitles.push(S.lines.mapShift, 'narration', 3.4);
+        G.Synth.glitch();
+      } },
+    { t: 240, id: 'escape', fn: function (w) {
+        w.flags.escape = true;
+        if (G.State.current !== 'RESULT' && G.State.current !== 'CHOICE') G.State.set('ESCAPE');
+        G.Subtitles.push(S.lines.escape, 'narration', 3);
+      } }
+  ];
+  G.Horror = {
+    update: function (w, dt) {
+      var D = w.horror.done;
+      for (var i = 0; i < EVENTS.length; i++) {
+        var ev = EVENTS[i];
+        if (w.time >= ev.t && !D[ev.id]) { D[ev.id] = true; ev.fn(w); }
+      }
+      w.horror.flicker = Math.sin(w.time * 9) * .5 + .5;
+    }
+  };
+
+  /* ---------- AI companion（单机） ---------- */
+  G.AI = {
+    update: function (w, dt) {
+      if (G.Game.mode === 'duo') return;
+      var ai = w.controlled === 'p1' ? w.p2 : w.p1;
+      var human = w.controlled === 'p1' ? w.p1 : w.p2;
+      var d = U.dist(ai, human);
+      if (d > 96) {
+        var vx = (human.x - ai.x) / d, vy = (human.y - ai.y) / d;
+        moveWithCollision(w, ai, vx * 152 * dt, vy * 152 * dt);
+        ai.facing.x = vx; ai.facing.y = vy; ai.moving = true;
+      } else ai.moving = false;
+
+      // 相认阶段的「报数」已在 Recognition.begin 里同步完成；
+      // AI 只负责跟随、避障与行为测试，不替玩家下认错结论。
+
+      // 行为测试：只有真爱人会挡在丧尸前面
+      if (w.recog.stage === 'VERIFY' && !w.flags.blocked && w.suspectId) {
+        var lover = w.byId[w.suspectId];
+        if (lover && lover.alive && U.dist(lover, human) < 260) {
+          var x = (human.x + lover.x) / 2 - 30, y = (human.y + lover.y) / 2;
+          moveWithCollision(w, lover, (x - lover.x) * .9 * dt, (y - lover.y) * .9 * dt);
+          if (U.dist(lover, human) < 86) {
+            w.flags.blocked = true;
+            w.humanity = U.clamp(w.humanity + C.humanity.block, 0, 100);
+            G.Subtitles.push(S.lines.block, 'narration', 3.6);
+          }
+        }
+      }
+    }
+  };
+})();
+
+</script>
+<script>
+/* 相认三技巧：分屏坐标锁定 / 节奏暗号 QTE（回声模仿） / 倒影 + 行为测试 */
+(function () {
+  var G = window.G = window.G || {};
+  var C = G.DATA.config, S = G.DATA.script, U = G.utils;
+
+  function sideMode(mode) { return mode === 'mummy' ? 'mummy' : 'centaur'; }
+  function listFor(w, mode) { return G.Perception.movers(w, sideMode(mode)); }
+
+  var R = G.Recognition = {
+    reset: function (w) {
+      w.recog = { stage: 'IDLE', p1Pick: 1, p2Pick: 1, aiK: 0, attempts: 0, mistakes: 0, verifyDone: false, reported: { p1: false, p2: false } };
+      w.qte = { active: false, idx: 0, t0: 0, echoFollow: 0, echoAt: [], hits: [], targetIsFake: false, result: null };
+      w.aiReport = null; w.lockedId = null;
+    },
+    indexFor: function (w, mode, id) {
+      if (!w || w.recog.stage !== 'LOCK') return 0;
+      var ms = listFor(w, mode);
+      for (var i = 0; i < ms.length; i++) if (ms[i].id === id) return i + 1;
+      return 0;
+    },
+    isPicked: function (w, mode, id) {
+      if (!w || w.recog.stage !== 'LOCK') return false;
+      var ms = listFor(w, mode);
+      var k = (mode === 'mummy')
+        ? (G.Game.mode === 'duo' ? w.recog.p2Pick : w.recog.aiK)
+        : w.recog.p1Pick;
+      return !!ms[k - 1] && ms[k - 1].id === id;
+    },
+    begin: function (w) {
+      if (w.recog.stage !== 'IDLE') return;
+      w.recog.stage = 'LOCK';
+      w.recog.reported = { p1: false, p2: G.Game.mode === 'duo' ? false : true };
+      G.State.set('RECOGNIZE');
+      G.Subtitles.push(S.lines.candidates, 'narration', 4);
+      G.Subtitles.push(S.lines.reportTip, 'narration', 4.6);
+      // AI 报数在 begin 时同步算好，不依赖下一帧，避免快速操作吞输入
+      if (G.Game.mode === 'solo') {
+        var ms = G.Perception.movers(w, 'mummy'), k = 0;
+        for (var i = 0; i < ms.length; i++) if (ms[i].id === w.suspectId) k = i + 1;
+        k = k || 1;
+        w.aiReport = k; w.recog.aiK = k;
+        G.Subtitles.push(S.lines.aiReport.replace('{k}', k), 'who', 6);
+        G.Subtitles.push('她看到的顺序，和你相反。', 'narration', 4);
+      }
+      G.Synth.bandage();
+    },
+    onPress: function (w, ev) {
+      if (!w) return;
+      var st = w.recog.stage;
+      if (st === 'LOCK') {
+        var n = listFor(w, 'centaur').length || 1;
+        if (ev.code === 'KeyQ') { w.recog.p1Pick = w.recog.p1Pick % n + 1; G.Synth.secret(true); }
+        else if (ev.code === 'KeyE' && G.Game.mode === 'duo') {
+          var n2 = listFor(w, 'mummy').length || 1;
+          w.recog.p2Pick = w.recog.p2Pick % n2 + 1; G.Synth.secret(true);
+        }
+        else if (ev.code === 'KeyF') { w.recog.reported.p1 = true; G.Synth.secret(true); }
+        else if (ev.code === 'Enter' && G.Game.mode === 'duo') { w.recog.reported.p2 = true; G.Synth.secret(true); }
+        if (w.recog.reported.p1 && w.recog.reported.p2) R.exchangeLock(w);
+        return;
+      }
+      if (st === 'QTE' && w.qte.active) {
+        if (ev.code === 'Space' || ev.code === 'Enter') R.qteHit(w, ev.t);
+        return;
+      }
+      if (st === 'VERIFY' && ev.code === 'KeyR') R.mirror(w);
+    },
+    update: function (w, dt) {
+      if (!w) return;
+      if (w.qte.active) {
+        var q = w.qte;
+        var deadline = q.t0 + C.qte.pattern[C.qte.pattern.length - 1] + C.qte.window + .45;
+        if (U.now() > deadline && !q.result) R.qteResolve(w, 'FAIL');
+      }
+    },
+
+    /* 技巧②：两侧各报「第几个在动」，只有指向同一实体才算数 */
+    exchangeLock: function (w) {
+      var m1 = listFor(w, 'centaur'), m2 = listFor(w, 'mummy');
+      var k2 = G.Game.mode === 'duo' ? w.recog.p2Pick : w.recog.aiK;
+      var a = m1[w.recog.p1Pick - 1], b = m2[k2 - 1];
+      w.recog.reported = { p1: false, p2: G.Game.mode === 'duo' ? false : true };
+      w.recog.attempts++;
+      if (!a || !b || a.id !== b.id) {
+        G.Subtitles.push(S.lines.lockFail, 'narration', 2.4);
+        G.Synth.glitch();
+        if (w.recog.attempts >= 3) G.Infection.applyMistake(w, true);
+        return;
+      }
+      w.lockedId = a.id;
+      if (w.byId[a.id]) w.byId[a.id].locked = true;
+      G.Subtitles.push(S.lines.lockOk, 'narration', 2.4);
+      G.Synth.secret(true);
+      R.startQTE(w, !a.isLover);
+    },
+
+    /* 技巧①：三短一长；假象慢半拍回声模仿，跟错就被带偏 */
+    startQTE: function (w, targetIsFake) {
+      w.recog.stage = 'QTE';
+      G.State.set('QTE');
+      w.qte = {
+        active: true, idx: 0, t0: U.now() + C.qte.lead,
+        echoFollow: 0, echoAt: [], hits: [], targetIsFake: targetIsFake, result: null
+      };
+      G.Subtitles.push(S.lines.qteTip, 'narration', 4.2);
+      G.Synth.secret(true);
+      G.UI.showQTE(w);
+    },
+    qteHit: function (w, t) {
+      var q = w.qte;
+      if (!q.active || q.result) return;
+      // 先判「是不是跟着回声按的」
+      for (var i = 0; i < q.echoAt.length; i++) {
+        if (Math.abs(t - q.echoAt[i]) <= C.qte.echoTolerance + C.qte.window * .5) {
+          q.echoFollow++;
+          G.Synth.glitch();
+          G.Subtitles.push(S.lines.qteEcho, 'onomat', 1.6);
+          if (q.echoFollow >= C.qte.echoMax) return R.qteResolve(w, 'MISLED');
+          return;
+        }
+      }
+      var exp = q.t0 + C.qte.pattern[q.idx];
+      if (Math.abs(t - exp) <= C.qte.window) {
+        q.hits.push(q.idx); q.idx++;
+        G.Synth.secret(!q.targetIsFake);
+        if (q.targetIsFake) {
+          var at = t + C.qte.echoDelay;
+          q.echoAt.push(at);
+          setTimeout(function () { if (!q.result) G.Synth.secret(false); }, C.qte.echoDelay * 1000);
+        }
+        if (q.idx >= C.qte.pattern.length) return R.qteResolve(w, 'SUCCESS');
+      } else {
+        G.Synth.glitch();
+        return R.qteResolve(w, 'FAIL');
+      }
+    },
+    qteResolve: function (w, result) {
+      var q = w.qte;
+      if (q.result) return;
+      q.result = result; q.active = false;
+      G.UI.hideQTE();
+      if (result === 'SUCCESS' && q.targetIsFake) {
+        // 没被回声带偏 = 识破假象，回去重选
+        G.Subtitles.push('它慢了半拍。不是她。', 'narration', 2.8);
+        if (w.byId[w.lockedId]) w.byId[w.lockedId].locked = false;
+        w.lockedId = null;
+        w.recog.stage = 'LOCK'; G.State.set('RECOGNIZE');
+        w.recog.reported = { p1: false, p2: G.Game.mode === 'duo' ? false : true };
+        return;
+      }
+      if (result === 'SUCCESS') {
+        w.flags.recognized = true;
+        w.humanity = U.clamp(w.humanity + C.humanity.correct, 0, 100);
+        G.Subtitles.push(S.lines.qteClean, 'narration', 2.6);
+      } else {
+        G.Infection.applyMistake(w);
+        w.flags.wrongPerson = true;
+        G.Subtitles.push(result === 'MISLED' ? S.lines.misled : '暗号没对上。它记住了你的样子。', 'narration', 3);
+      }
+      R.toVerify(w);
+    },
+    toVerify: function (w) {
+      w.recog.stage = 'VERIFY';
+      G.State.set('VERIFY');
+      G.Subtitles.push(S.lines.verifyTip, 'narration', 4.5);
+    },
+
+    /* 技巧③：水坑倒影不撒谎（行为测试由 AI 同伴在 systems.js 里触发） */
+    mirror: function (w) {
+      var near = w.puddles.some(function (p) { return U.dist(p, w.p1) < 240 || U.dist(p, w.p2) < 240; });
+      if (!near) { G.Subtitles.push('要站在水洼边，才看得见倒影。', 'system', 2); return; }
+      w.flags.mirrorReveal = true;
+      var trueOne = w.lockedId && w.lockedId === w.suspectId && !w.flags.wrongPerson;
+      if (trueOne) {
+        G.Subtitles.push(S.lines.mirrorTrue, 'narration', 3.2);
+        G.Synth.secret(true);
+      } else {
+        w.flags.wrongPerson = true;
+        G.Infection.applyMistake(w, true);
+        G.Subtitles.push(S.lines.mirrorFake, 'narration', 3.2);
+        G.Synth.glitch();
+      }
+      w.flags.verifyDone = true;
+      w.recog.stage = 'DONE';
+      G.State.set('ESCAPE');
+      G.Subtitles.push(S.lines.serum + ' 往右，去发射通道。', 'narration', 4);
+    },
+    forceVerify: function (w) {
+      if (w.flags.verifyDone) return;
+      w.qte.active = false; G.UI.hideQTE();
+      w.flags.verifyDone = true;
+      w.recog.stage = 'DONE';
+      G.State.set('ESCAPE');
+      G.Subtitles.push('没时间验证了。往右冲。', 'narration', 2.6);
+    }
+  };
+})();
+
+</script>
+<script>
+/* 末日医院垂直切片：A 病房区 → B 镜面走廊 → C 发射通道（同一张连通网格） */
+(function () {
+  var G = window.G = window.G || {};
+  var C = G.DATA.config;
+
+  var Level = G.Level = {
+    build: function (w) {
+      w.zones = [
+        { x: 430, y: 110, name: 'A · 病房区' },
+        { x: 1420, y: 110, name: 'B · 镜面走廊' },
+        { x: 2130, y: 110, name: 'C · 发射通道' }
+      ];
+      w.walls = [
+        { x: 0, y: 0, w: 2400, h: 36 }, { x: 0, y: 944, w: 2400, h: 36 },
+        { x: 0, y: 0, w: 36, h: 980 }, { x: 2364, y: 0, w: 36, h: 980 },
+        { x: 300, y: 150, w: 150, h: 62, kind: 'bed' },
+        { x: 300, y: 740, w: 150, h: 62, kind: 'bed' },
+        { x: 560, y: 150, w: 150, h: 62, kind: 'bed' },
+        { x: 560, y: 740, w: 150, h: 62, kind: 'bed' },
+        { x: 980, y: 120, w: 26, h: 250, kind: 'curtain' },
+        { x: 980, y: 640, w: 26, h: 250, kind: 'curtain' },
+        { x: 1260, y: 120, w: 26, h: 230, kind: 'curtain' },
+        { x: 1260, y: 660, w: 26, h: 230, kind: 'curtain' },
+        { x: 1600, y: 150, w: 160, h: 62, kind: 'bed' },
+        { x: 1600, y: 760, w: 160, h: 62, kind: 'bed' },
+        { x: 1880, y: 250, w: 40, h: 130 },
+        { x: 1880, y: 620, w: 40, h: 130 },
+        { x: 1700, y: 200, w: 140, h: 34, kind: 'bed' }   // 地图自我改写时移动这一堵
+      ];
+      w.puddles = [
+        { x: 830, y: 520, r: 112 },
+        { x: 1380, y: 480, r: 96 },
+        { x: 2030, y: 500, r: 82 }
+      ];
+
+      // 5 个候选：两侧「在动」的集合不同、排序相反 → 必须交换信息才能锁定
+      var spots = [
+        { x: 760, y: 360, g1: true, g2: true, lover: true },  // 真爱人：P1 侧第 2 / P2 侧第 3
+        { x: 650, y: 610, g1: true, g2: false },
+        { x: 805, y: 300, g1: false, g2: true },
+        { x: 890, y: 640, g1: true, g2: true },
+        { x: 950, y: 430, g1: false, g2: false }
+      ];
+      for (var i = 0; i < spots.length; i++) {
+        var s = spots[i];
+        var e = G.Entities.make({
+          id: 'c' + i, kind: 'candidate', x: s.x, y: s.y, r: 21,
+          trueForm: s.lover ? 'mummy' : 'fake',
+          isLover: !!s.lover, isFake: !s.lover,
+          ghostP1: s.g1, ghostP2: s.g2
+        });
+        G.World.add(w, e);
+        w.candidates.push(e.id);
+        if (s.lover) w.suspectId = e.id;
+      }
+
+      var zs = [
+        { x: 1150, y: 300 }, { x: 1230, y: 700 }, { x: 1520, y: 380 },
+        { x: 1700, y: 620 }, { x: 1920, y: 440 }, { x: 2100, y: 700 }
+      ];
+      for (var z = 0; z < zs.length; z++) {
+        G.World.add(w, G.Entities.make({
+          id: 'z' + z, kind: 'zombie', x: zs[z].x, y: zs[z].y,
+          r: 19, trueForm: 'zombie', speed: 46
+        }));
+      }
+      G.World.add(w, G.Entities.make({ id: 's1', kind: 'pickup', x: 520, y: 300, r: 12, trueForm: 'serum' }));
+      G.World.add(w, G.Entities.make({ id: 's2', kind: 'pickup', x: 1500, y: 700, r: 12, trueForm: 'serum' }));
+
+      w.rocket = { x: 2230, y: 490, w: 120, h: 210 };
+    }
+  };
+
+  /* 时间轴：阶段推进的保底（玩家操作优先，避免展示时卡住） */
+  G.Timeline = {
+    seen: {},
+    update: function (w, dt) {
+      var T = C.timeline, st = w.recog.stage;
+      if ((w.time >= T.candidates || w.p1.x > 560) && st === 'IDLE') G.Recognition.begin(w);
+      if (w.time >= T.qte && st === 'LOCK') {
+        w.recog.reported.p1 = true; w.recog.reported.p2 = true;
+        G.Recognition.exchangeLock(w);
+      }
+      if (w.time >= T.verify && w.qte.active) G.Recognition.qteResolve(w, 'FAIL');
+      if (w.time >= T.mapShift && !w.flags.verifyDone) G.Recognition.forceVerify(w);
+      if (w.time >= T.choice) G.Timeline.toChoice(w);
+    },
+    toChoice: function (w) {
+      if (G.State.current === 'CHOICE' || G.State.current === 'RESULT') return;
+      G.Recognition.forceVerify(w);
+      G.State.set('CHOICE');
+      G.UI.overlay('choice');
+      G.Synth.bandage();
+    }
+  };
+})();
+
+</script>
+<script>
+/* HUD（会撒谎）/ 拟声字幕 / QTE 节奏条 / 标题·剧情·抉择·结局卡 */
+(function () {
+  var G = window.G = window.G || {};
+  var C = G.DATA.config, S = G.DATA.script, U = G.utils;
+  var D = {};
+
+  function html(s) { return String(s).replace(/\n/g, '<br>'); }
+
+  var UI = G.UI = {
+    init: function () {
+      ['hud-left', 'hud-right', 'split-line', 'prompt', 'subtitles', 'overlay', 'card',
+        'qte', 'qte-cursor', 'qte-beats', 'qte-hint', 'flash',
+        'bar-inf-a', 'bar-inf-b', 'bar-hum-a', 'bar-hum-b',
+        'num-inf-a', 'num-inf-b', 'num-hum-a', 'num-hum-b', 'hud-foot-a', 'hud-foot-b']
+        .forEach(function (id) { D[id] = U.el(id); });
+      G.Events.on('silence', function (on) {
+        D.flash.classList.toggle('on', !!on);
+        if (on) setTimeout(function () { D.flash.classList.remove('on'); }, 240);
+      });
+      G.Events.on('truth', function () {
+        D.flash.classList.add('on');
+        setTimeout(function () { D.flash.classList.remove('on'); }, 700);
+      });
+    },
+    overlay: function (kind, key) {
+      var c = D.card;
+      if (!kind) { D.overlay.classList.remove('show'); return; }
+      var out = '';
+      if (kind === 'title') {
+        out = '<h1>' + S.title + '</h1><div class="sub">' + S.subtitle + ' · ' + S.theme + '</div>'
+          + S.premise.map(function (p) { return '<p>' + p + '</p>'; }).join('')
+          + '<div class="go">按 任 意 键 继 续</div>';
+      } else if (kind === 'brief') {
+        var keys = S.keys.map(function (k) { return '<div><b>' + k[0] + '</b><br>' + k[1] + '</div>'; }).join('');
+        out = '<h2>末 日 第 四 十 一 天</h2>'
+          + S.brief.map(function (p) { return '<p>' + p + '</p>'; }).join('')
+          + '<div class="keys">' + keys + '</div>'
+          + '<div class="go">按 1 单 机（AI 同伴）　/　按 2 双 人 同 屏</div>';
+      } else if (kind === 'choice') {
+        out = '<h2>' + S.lines.choiceTitle + '</h2><p>' + S.lines.choiceSub + '</p>'
+          + S.lines.choiceOpts.map(function (o) { return '<div class="opt">' + html(o) + '</div>'; }).join('')
+          + '<div class="go">按 1 / 2 / 3 选 择</div>';
+      } else if (kind === 'ending') {
+        var e = S.endings[key] || S.endings.timeout;
+        var w = G.Game.world;
+        out = '<h2>' + e.name + '</h2><div class="ending">' + html(e.text) + '</div>'
+          + '<div class="stat">用时 ' + U.fmt(w ? w.time : 0)
+          + ' · 感染 ' + Math.round(w ? w.infection : 0)
+          + ' · 人性 ' + Math.round(w ? w.humanity : 0)
+          + ' · 认错 ' + (w ? w.stat.mistakes : 0) + ' 次</div>'
+          + '<div class="go">按 R 回 到 标 题</div>';
+      }
+      c.innerHTML = out;
+      D.overlay.classList.add('show');
+    },
+    showQTE: function (w) { D.qte.classList.remove('hidden'); UI.qteBeats(w); },
+    hideQTE: function () { D.qte.classList.add('hidden'); },
+    qteBeats: function (w) {
+      var q = w.qte, span = C.qte.lead + C.qte.pattern[3] + .4;
+      var s = '';
+      for (var i = 0; i < C.qte.pattern.length; i++) {
+        var pct = (C.qte.lead + C.qte.pattern[i]) / span * 100;
+        var cls = q.hits.indexOf(i) >= 0 ? ' hit' : (q.result && q.result !== 'SUCCESS' ? ' miss' : '');
+        s += '<div class="qte-beat' + cls + '" style="left:' + pct.toFixed(2) + '%"></div>';
+      }
+      for (var j = 0; j < q.echoAt.length; j++) {
+        var ep = (C.qte.lead + (q.echoAt[j] - q.t0)) / span * 100;
+        if (ep > 0 && ep < 100) s += '<div class="qte-beat echo" style="left:' + ep.toFixed(2) + '%"></div>';
+      }
+      D['qte-beats'].innerHTML = s;
+    },
+    update: function (w) {
+      var duo = (G.Game.mode === 'duo' || G.Game.dualView);
+      D['split-line'].classList.toggle('off', !duo);
+      D['hud-right'].classList.toggle('off', !duo);
+      D['hud-left'].classList.toggle('off', G.State.current === 'TITLE' || G.State.current === 'BRIEF');
+
+      // HUD 偶尔撒谎：感染越深越不可信
+      var lie = w.infection > 38 && (Math.floor(w.time * 1.3) % 11 === 0);
+      var inf = Math.round(w.infection), hum = Math.round(w.humanity);
+      D['bar-inf-a'].style.width = inf + '%'; D['bar-inf-b'].style.width = inf + '%';
+      D['bar-hum-a'].style.width = hum + '%'; D['bar-hum-b'].style.width = hum + '%';
+      D['num-inf-a'].textContent = lie ? '??' : inf;
+      D['num-inf-b'].textContent = lie ? '1??' : inf;
+      D['num-hum-a'].textContent = lie ? '??' : hum;
+      D['num-hum-b'].textContent = lie ? '??' : hum;
+      D['hud-foot-a'].textContent = '血清 ×' + w.serum + ' · ' + U.fmt(w.time);
+      D['hud-foot-b'].textContent = lie ? S.lines.hudLies[3] : '共用一条命';
+
+      // 字幕
+      D.subtitles.innerHTML = w.subs.map(function (s) {
+        var cls = s.kind === 'onomat' ? 'onomat' : (s.kind === 'who' ? 'who' : '');
+        return '<div class="line ' + cls + '">' + html(s.text) + '</div>';
+      }).join('');
+
+      // 阶段提示
+      var pr = '', st = w.recog.stage, ph = G.State.current;
+      if (ph === 'PLAY') pr = '找血清 · 注意身后的蹄声';
+      else if (st === 'LOCK') {
+        pr = G.Game.mode === 'duo'
+          ? 'A：Q 选 / F 报数　　B：E 选 / Enter 报数'
+          : '按 Q 选「第几个在动」，按 F 报数　·　同伴报的是第 ' + (w.recog.aiK || '?') + ' 个';
+      } else if (st === 'QTE') pr = '跟着亮点敲：三短一长　·　别跟慢半拍的回声';
+      else if (st === 'VERIFY') pr = '走到水洼边，按 R 看倒影';
+      else if (st === 'DONE' || ph === 'ESCAPE') pr = '往右冲 · 去发射通道 · 不能后退';
+      D.prompt.textContent = pr;
+
+      // QTE 节奏条
+      if (w.qte.active) {
+        var q = w.qte, span = C.qte.lead + C.qte.pattern[3] + .4;
+        var p = U.clamp((U.now() - (q.t0 - C.qte.lead)) / span, 0, 1);
+        D['qte-cursor'].style.left = (p * 100).toFixed(2) + '%';
+        UI.qteBeats(w);
+        D['qte-hint'].textContent = (q.targetIsFake ? '有东西在学你 · ' : '') +
+          '已敲 ' + q.idx + '/4 · 跟回声 ' + q.echoFollow + '/' + C.qte.echoMax +
+          ' · 按 空格 / Enter';
+      }
+    }
+  };
+})();
+
+</script>
+<script>
+/* 启动入口：必须放在所有模块之后 */
+(function () {
+  function start() { G.Game.init(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+
+</script>
+</body>
+</html>
