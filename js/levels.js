@@ -1,6 +1,6 @@
 /* 三层简化医院：大厅/药房 + 两层各五间科室；角色、交互点均使用 x/y/floor 逻辑坐标。 */
 (function(){
-  var G=window.G=window.G||{};
+  var G=window.G=window.G||{},C=G.DATA.config;
   var departments={1:['挂号大厅','药房'],2:['内科','外科','儿科','眼科','口腔科'],3:['急诊科','影像科','检验科','康复科','妇产科']};
   function add(w,o){G.World.add(w,G.Entities.make(o));}
   G.Level={departments:departments,build:function(w){
