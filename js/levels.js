@@ -33,7 +33,7 @@
         { x: 2030, y: 500, r: 82 }
       ];
 
-      // 5 个候选：两侧「在动」的集合不同、排序相反 → 必须交换信息才能锁定
+      // 多个外观相似的幸存者；相认只能经由主线证据与共同操作
       var spots = [
         { x: 760, y: 360, g1: true, g2: true, lover: true },  // 真爱人：P1 侧第 2 / P2 侧第 3
         { x: 650, y: 610, g1: true, g2: false },
@@ -45,7 +45,7 @@
         var s = spots[i];
         var e = G.Entities.make({
           id: 'c' + i, kind: 'candidate', x: s.x, y: s.y, r: 21,
-          trueForm: s.lover ? 'mummy' : 'fake',
+          trueForm: 'mummy',
           isLover: !!s.lover, isFake: !s.lover,
           ghostP1: s.g1, ghostP2: s.g2
         });
@@ -67,6 +67,12 @@
       G.World.add(w, G.Entities.make({ id: 's1', kind: 'pickup', x: 520, y: 300, r: 12, trueForm: 'serum' }));
       G.World.add(w, G.Entities.make({ id: 's2', kind: 'pickup', x: 1500, y: 700, r: 12, trueForm: 'serum' }));
 
+      // 主线调查站：角色专属证据汇合到同一座急救中继台
+      G.World.add(w, G.Entities.make({ id: 'clueA', kind: 'clue', x: 520, y: 470, r: 24, label: '值班录音' }));
+      G.World.add(w, G.Entities.make({ id: 'clueB', kind: 'clue', x: 1460, y: 460, r: 24, label: '病历残页' }));
+      G.World.add(w, G.Entities.make({ id: 'relay', kind: 'relay', x: 1720, y: 480, r: 30, label: '急救中继台' }));
+      G.World.add(w, G.Entities.make({ id: 'meet', kind: 'meet', x: 2080, y: 500, r: 32, label: '隔离闸门' }));
+
       w.rocket = { x: 2230, y: 490, w: 120, h: 210 };
     }
   };
@@ -76,14 +82,8 @@
     seen: {},
     update: function (w, dt) {
       var T = C.timeline, st = w.recog.stage;
-      if ((w.time >= T.candidates || w.p1.x > 560) && st === 'IDLE') G.Recognition.begin(w);
-      if (w.time >= T.qte && st === 'LOCK') {
-        w.recog.reported.p1 = true; w.recog.reported.p2 = true;
-        G.Recognition.exchangeLock(w);
-      }
-      if (w.time >= T.verify && w.qte.active) G.Recognition.qteResolve(w, 'FAIL');
-      if (w.time >= T.mapShift && !w.flags.verifyDone) G.Recognition.forceVerify(w);
-      if (w.time >= T.choice) G.Timeline.toChoice(w);
+      if (w.time >= T.candidates && st === 'IDLE') { w.recog.stage='INVESTIGATE'; G.State.set('RECOGNIZE'); G.Subtitles.push('主线：分头调查值班录音与病历残页，再共同修复中继台。','narration',5); }
+      if (w.recog.together && w.time >= T.choice) G.Timeline.toChoice(w);
     },
     toChoice: function (w) {
       if (G.State.current === 'CHOICE' || G.State.current === 'RESULT') return;

@@ -63,7 +63,7 @@
         if (ev.code === 'Space' || ev.code === 'Enter') R.qteHit(w, ev.t);
         return;
       }
-      if (st === 'VERIFY' && ev.code === 'KeyR') R.mirror(w);
+      // 相认改由主线调查及双方在场共同操作推进，不再由倒影/快捷判定泄底。
     },
     update: function (w, dt) {
       if (!w) return;

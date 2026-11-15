@@ -9,7 +9,7 @@
   var UI = G.UI = {
     init: function () {
       ['hud-left', 'hud-right', 'split-line', 'prompt', 'subtitles', 'overlay', 'card',
-        'qte', 'qte-cursor', 'qte-beats', 'qte-hint', 'flash',
+        'qte', 'qte-cursor', 'qte-beats', 'qte-hint', 'flash', 'mission',
         'bar-inf-a', 'bar-inf-b', 'bar-hum-a', 'bar-hum-b',
         'num-inf-a', 'num-inf-b', 'num-hum-a', 'num-hum-b', 'hud-foot-a', 'hud-foot-b']
         .forEach(function (id) { D[id] = U.el(id); });
@@ -20,17 +20,30 @@
       G.Events.on('truth', function () {
         D.flash.classList.add('on');
         setTimeout(function () { D.flash.classList.remove('on'); }, 700);
+        // 相认闪回：只在 DOM 层短闪一张概念图，不改渲染 / 音频 / 时间常量
+        var st = U.el('still'), si = U.el('still-img');
+        if (st && si && S.files && S.art) {
+          si.src = S.files[S.art.still] || '';
+          st.classList.add('on');
+          setTimeout(function () { st.classList.remove('on'); }, 380);
+        }
       });
     },
     overlay: function (kind, key) {
       var c = D.card;
       if (!kind) { D.overlay.classList.remove('show'); return; }
       var out = '';
+      var artKey = '', bgKey = '';
+      var srcOf = function (k) { return (S.files && k && S.files[k]) ? S.files[k] : ''; };
       if (kind === 'title') {
+        artKey = S.art ? S.art.title : '';
+        bgKey = S.art ? S.art.titleBg : '';
         out = '<h1>' + S.title + '</h1><div class="sub">' + S.subtitle + ' · ' + S.theme + '</div>'
+          + '<div class="tag">人马 × 木乃伊 · 分屏感知错位</div>'
           + S.premise.map(function (p) { return '<p>' + p + '</p>'; }).join('')
           + '<div class="go">按 任 意 键 继 续</div>';
       } else if (kind === 'brief') {
+        artKey = S.art ? S.art.brief : '';
         var keys = S.keys.map(function (k) { return '<div><b>' + k[0] + '</b><br>' + k[1] + '</div>'; }).join('');
         out = '<h2>末 日 第 四 十 一 天</h2>'
           + S.brief.map(function (p) { return '<p>' + p + '</p>'; }).join('')
@@ -41,6 +54,7 @@
           + S.lines.choiceOpts.map(function (o) { return '<div class="opt">' + html(o) + '</div>'; }).join('')
           + '<div class="go">按 1 / 2 / 3 选 择</div>';
       } else if (kind === 'ending') {
+        artKey = S.art ? (S.art['end_' + key] || S.art.end_timeout) : '';
         var e = S.endings[key] || S.endings.timeout;
         var w = G.Game.world;
         out = '<h2>' + e.name + '</h2><div class="ending">' + html(e.text) + '</div>'
@@ -50,6 +64,17 @@
           + ' · 认错 ' + (w ? w.stat.mistakes : 0) + ' 次</div>'
           + '<div class="go">按 R 回 到 标 题</div>';
       }
+      // 标题全屏背景只在 title 卡出现；惰性查询，不进 init() 的 id 数组
+      var bg = U.el('bg-img');
+      if (bg) {
+        if (bgKey && srcOf(bgKey)) { bg.src = srcOf(bgKey); bg.style.display = ''; }
+        else { bg.style.display = 'none'; }
+      }
+      // 装饰立绘与 AI 标识一律追加在末尾：原有文本 token 及顺序保持不变
+      if (artKey && srcOf(artKey)) {
+        out += '<img class="art" src="' + srcOf(artKey) + '" alt="" decoding="async">';
+      }
+      if (artKey || bgKey) out += '<div class="credit">概念图由 AI 生成</div>';
       c.innerHTML = out;
       D.overlay.classList.add('show');
     },
@@ -95,7 +120,7 @@
 
       // 阶段提示
       var pr = '', st = w.recog.stage, ph = G.State.current;
-      if (ph === 'PLAY') pr = '找血清 · 注意身后的蹄声';
+      if (ph === 'PLAY' || ph === 'RECOGNIZE') pr = '医院封锁正在收紧 · 分头调查，互相报告线索';
       else if (st === 'LOCK') {
         pr = G.Game.mode === 'duo'
           ? 'A：Q 选 / F 报数　　B：E 选 / Enter 报数'
@@ -104,6 +129,7 @@
       else if (st === 'VERIFY') pr = '走到水洼边，按 R 看倒影';
       else if (st === 'DONE' || ph === 'ESCAPE') pr = '往右冲 · 去发射通道 · 不能后退';
       D.prompt.textContent = pr;
+      D.mission.textContent = w.mission || '调查值班录音与病历残页';
 
       // QTE 节奏条
       if (w.qte.active) {

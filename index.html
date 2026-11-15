@@ -3,12 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>眼中皆是你 · 恐怖 / 即时动作 / 马</title>
+<title>末日爱人 · LAST LOVER ON EARTH · 恐怖 / 即时动作 / 马</title>
 <link rel="stylesheet" href="css/style.css">
+<meta name="theme-color" content="#080b10">
 </head>
 <body>
 <div id="stage">
-  <canvas id="game" aria-label="游戏画面"></canvas>
+  <canvas id="game" aria-label="3D 游戏画面"></canvas>
   <div id="grain" aria-hidden="true"></div>
   <div id="split-line" aria-hidden="true"></div>
 
@@ -27,6 +28,7 @@
   </div>
 
   <div id="prompt" class="prompt"></div>
+  <div id="mission" class="mission"></div>
   <div id="subtitles" class="subtitles"></div>
 
   <div id="qte" class="qte hidden">
@@ -36,9 +38,11 @@
   </div>
 
   <div id="overlay" class="overlay">
+    <img id="bg-img" class="bg-art" alt="" decoding="async">
     <div class="card" id="card"></div>
   </div>
   <div id="flash" class="flash"></div>
+  <div id="still" class="still" aria-hidden="true"><img id="still-img" alt="" decoding="async"></div>
 </div>
 
 <script src="data/config.js"></script>

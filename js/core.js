@@ -108,7 +108,7 @@
         return;
       }
       if (ph === 'RESULT') {
-        if (ev.code === 'KeyR' || ev.code === 'Space' || ev.code === 'Enter' || ev.code === 'Escape') {
+        if (ev.code === 'Space' || ev.code === 'Enter' || ev.code === 'Escape') {
           State.set('TITLE'); G.UI.overlay('title');
         }
         return;
@@ -131,30 +131,8 @@
             G.Subtitles.push('[接管] ' + (w.controlled === 'p1' ? 'A · 人马' : 'B · 木乃伊'), 'system', 1.6);
           }
           return true;
-        case 'KeyV':
-          Game.dualView = !Game.dualView;
-          G.Subtitles.push(Game.dualView ? '[双屏观察] 开' : '[双屏观察] 关', 'system', 1.4);
-          return true;
+        case 'KeyV': return true;
         case 'KeyM': G.Audio.muteAll(C.silence.long); return true;
-        case 'KeyH': Game.debugTruth = !Game.debugTruth; return true;
-        case 'KeyT':   // 展演快进：同步进入相认阶段
-          if (w) {
-            w.p1.x = 620; w.p1.y = 500;
-            w.time = Math.max(w.time, C.timeline.candidates + 1);
-            G.Recognition.begin(w);
-          }
-          return true;
-        case 'KeyY':   // 展演快进：跳到登船抉择（补齐演示条件）
-          if (w) {
-            w.serum = Math.max(w.serum, 1);
-            w.qte.active = false; G.UI.hideQTE();
-            if (w.lockedId === w.suspectId && !w.flags.wrongPerson) {
-              w.flags.recognized = true;
-              G.Subtitles.push('[展演] 暗号已对上。', 'system', 2);
-            }
-            G.Recognition.forceVerify(w); G.Timeline.toChoice(w);
-          }
-          return true;
         case 'KeyP':
           Game.present = !Game.present;
           document.body.classList.toggle('present', Game.present);

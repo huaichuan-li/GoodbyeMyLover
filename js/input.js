@@ -5,9 +5,9 @@
 
   var MAP = {
     KeyW: 'p1', KeyA: 'p1', KeyS: 'p1', KeyD: 'p1',
-    KeyQ: 'p1', KeyF: 'p1', Space: 'p1', ShiftLeft: 'p1', KeyR: 'p1',
+    KeyQ: 'p1', KeyF: 'p1', Space: 'p1', ShiftLeft: 'p1', KeyR: 'p1', KeyE: 'p1',
     ArrowUp: 'p2', ArrowDown: 'p2', ArrowLeft: 'p2', ArrowRight: 'p2',
-    KeyE: 'p2', Enter: 'p2', ShiftRight: 'p2',
+    KeyJ: 'p2', KeyK: 'p2', Enter: 'p2', ShiftRight: 'p2',
     Tab: 'sys', KeyV: 'sys', KeyM: 'sys', KeyH: 'sys', KeyP: 'sys',
     Escape: 'sys', Digit1: 'sys', Digit2: 'sys', Digit3: 'sys',
     Numpad1: 'sys', Numpad2: 'sys', Numpad3: 'sys'

@@ -108,8 +108,17 @@
         }
       }
 
+      // 证据调查与协作修复：只允许对应角色调查自己的线索；不显示任何身份标记。
+      var clues = [{id:'clueA', role:'p1', flag:'clueA', text:'录音：发射前，约好在停电时敲三下，再等一拍。她把节拍藏进值班交接。'},
+        {id:'clueB', role:'p2', flag:'clueB', text:'病历：病房 17 的两人约好用三短一长确认彼此；伪造者只会照着声音模仿。'},
+        {id:'relay', role:'both', flag:'relay', text:'中继台恢复。两份记录吻合：节拍是约定，只有共同完成隔离舱校准才能确认。'}];
+      clues.forEach(function(c){var e=w.byId[c.id];if(!e||!e.alive)return;var p=c.role==='p2'?w.p2:w.p1;var d=U.dist(e,p);if(d<74&&(G.Input.isDown(c.role==='p2'?'KeyK':'KeyE')||G.Input.isDown(c.role==='both'?'KeyK':'KeyE'))){if(c.role==='both'){if(U.dist(w.p1,e)<74&&U.dist(w.p2,e)<74){w.recog.relay=true;e.alive=false;G.Subtitles.push(c.text,'narration',6);}}else{w.recog[c.flag]=true;e.alive=false;G.Subtitles.push(c.text,'narration',6);}}});
+      var meet=w.byId.meet;
+      if(meet&&meet.alive&&w.recog.relay&&U.dist(w.p1,meet)<82&&U.dist(w.p2,meet)<82&&G.Input.isDown('KeyF')&&G.Input.isDown('KeyJ')){w.recog.together=true;w.flags.recognized=!!(w.recog.clueA&&w.recog.clueB);w.flags.verifyDone=true;meet.alive=false;G.State.set('ESCAPE');G.Subtitles.push(w.flags.recognized?'闸门两侧同时亮起同一盏灯。你们没有看见彼此的真形，却知道对面记得同一个约定。':'闸门只亮了一侧。两份线索还没有汇齐。','narration',5);}
+      var hint=[];if(!w.recog.clueA)hint.push('A：找值班录音');if(!w.recog.clueB)hint.push('B：找病历残页');if(w.recog.clueA&&w.recog.clueB&&!w.recog.relay)hint.push('两人同到中继台，按 E / K');if(w.recog.relay&&!w.recog.together)hint.push('两人同到隔离闸门，同时按 F / J');if(w.recog.together)hint.push('相认完成：前往发射通道');w.mission=hint.join('　·　');
+
       // 提前登船：完成验证 + 抵达火箭
-      if (w.flags.verifyDone && w.p1.x > w.rocket.x - 150 && G.State.current !== 'CHOICE' && G.State.current !== 'RESULT') {
+      if (w.flags.verifyDone && w.recog.together && w.p1.x > w.rocket.x - 150 && G.State.current !== 'CHOICE' && G.State.current !== 'RESULT') {
         G.Timeline.toChoice(w);
       }
     }

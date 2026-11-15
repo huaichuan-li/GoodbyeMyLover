@@ -31,8 +31,18 @@
   /* ---------- world ---------- */
   G.World = {
     create: function () {
-      var p1 = Entities.player('p1', 170, 500, 'centaur', C.speed.p1);
-      var p2 = Entities.player('p2', 250, 560, 'mummy', C.speed.p2);
+      // 每局从分散的成对出生区抽签，维持至少约 9 米距离，开场不能直接互相确认。
+      var starts = [
+        [{x:180,y:270},{x:1760,y:730}],
+        [{x:420,y:500},{x:1530,y:470}],
+        [{x:650,y:760},{x:2070,y:260}],
+        [{x:330,y:700},{x:1650,y:300}],
+        [{x:760,y:520},{x:1880,y:720}],
+        [{x:520,y:250},{x:1450,y:760}]
+      ];
+      var spawn = starts[Math.floor(Math.random() * starts.length)];
+      var p1 = Entities.player('p1', spawn[0].x, spawn[0].y, 'centaur', C.speed.p1);
+      var p2 = Entities.player('p2', spawn[1].x, spawn[1].y, 'mummy', C.speed.p2);
       return {
         time: 0, infection: 0, humanity: C.humanity.start, serum: C.serum.count,
         entities: [p1, p2], byId: { p1: p1, p2: p2 },
@@ -45,7 +55,7 @@
           mapShifted: false, boarded: false, mirrorReveal: false,
           silenceFlash: false, escape: false
         },
-        recog: { stage: 'IDLE', p1Pick: 0, p2Pick: 0, aiK: 0, attempts: 0, mistakes: 0, verifyDone: false },
+        recog: { stage: 'IDLE', p1Pick: 0, p2Pick: 0, aiK: 0, attempts: 0, mistakes: 0, verifyDone: false, clueA: false, clueB: false, relay: false, together: false },
         qte: { active: false, idx: 0, t0: 0, echoFollow: 0, echoAt: [], targetIsFake: false, result: null },
         horror: { done: {}, hoofT: 0, flicker: 0 },
         subs: [], prompt: '', aiReport: null, silencedUntil: 0,

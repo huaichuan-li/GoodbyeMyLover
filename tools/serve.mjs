@@ -33,5 +33,5 @@ createServer(async (req, res) => {
     res.end('404 · ' + e.message);
   }
 }).listen(PORT, '127.0.0.1', () => {
-  console.log(`眼中皆是你 → http://127.0.0.1:${PORT}/`);
+  console.log(`末日爱人 LAST LOVER ON EARTH → http://127.0.0.1:${PORT}/`);
 });

@@ -3,28 +3,41 @@
   var G = window.G = window.G || {};
   G.DATA = G.DATA || {};
   G.DATA.script = {
-    title: '眼 中 皆 是 你',
-    subtitle: 'EVERY ONE OF THEM IS YOU',
+    title: '末 日 爱 人',
+    subtitle: 'LAST LOVER ON EARTH',
     theme: '恐怖 / 即时动作 / 马',
+    files: {
+      centaur: 'assets/optimized/01_centaur_trueform.jpg',
+      mummy: 'assets/optimized/02_mummy_beloved.jpg',
+      faces: 'assets/optimized/03_same_face_candidates.jpg',
+      fake: 'assets/optimized/04_false_beloved.jpg',
+      puddle: 'assets/optimized/05_puddle_reflection_truth.jpg',
+      split: 'assets/optimized/06_split_perception.jpg'
+    },
+    art: {
+      titleBg: 'split', title: 'centaur', brief: 'mummy', still: 'puddle',
+      end_true: 'mummy', end_wrong: 'fake', end_horse: 'centaur',
+      end_alone: 'split', end_stay: 'puddle', end_timeout: 'faces'
+    },
     premise: [
       '感染改写的是眼睛，不是世界。',
-      '人马眼中，一切活物都是木乃伊；木乃伊眼中，一切活物都是人马。',
-      '于是满城都是爱人，而你们认不出彼此。'
+      '人马眼中，活物都裹着绷带；木乃伊眼中，活物都长着蹄影。',
+      '外貌会撒谎。末日里满城都是爱人，你们却认不出彼此。'
     ],
     brief: [
-      '末日第 41 天。你在废弃医院醒来，四肢长成了马蹄。',
-      '她在某个病房里，身上缠满绷带。你只记得你们之间的暗号：三短一长。',
-      '找到她，用血清恢复人形，赶上最后一班火箭。'
+      '末日第 41 天。你们在废弃医院走散，感染让彼此的外形变得不可信。',
+      '值班录音与病历残页分别留在不同区域；两份证据必须由两人亲自找到。',
+      '修复急救中继台，在隔离闸门两侧共同确认，然后带上血清赶往发射场。'
     ],
     keys: [
-      ['A · 人马', 'W A S D 移动 / 左 Shift 冲刺撞踏 / Q 切换候选 / F 报数 / 空格 敲暗号 / R 看倒影'],
-      ['B · 木乃伊', '方向键 移动 / 右 Shift 冲刺 / E 切换候选 / Enter 报数与敲暗号'],
-      ['单机', 'Tab 接管切换 / V 双屏观察 / 1 2 3 抉择'],
+      ['A · 人马', 'W A S D 移动 / 左 Shift 冲刺 / E 调查与修复 / F 闸门确认'],
+      ['B · 木乃伊', '方向键移动 / 右 Shift 冲刺 / K 调查与修复 / J 闸门确认'],
+      ['单机', 'Tab 接管切换 / 1 2 3 抉择'],
       ['调试 / 展演', 'M 静音 / H 显真形 / T 快进到相认 / Y 快进到抉择 / P 展演亮度 / Esc 标题']
     ],
     lines: {
       boot: '你眼中，一切活物都是……',
-      wake: '第四十一天。走廊里全是她。',
+      wake: '第四十一天。你们在医院走散了。',
       sameFace: '每一张脸都一样。别靠长相找人。',
       firstSilence: '[ …… ]',
       hoofBehind: '嗒……嗒……',
@@ -58,8 +71,8 @@
     },
     endings: {
       true: {
-        name: '眼 中 终 于 是 你',
-        text: '血清起效的那一刻，满城的木乃伊褪回人形。\n两侧画面短暂重合——这次你认得出来，只有一个人。\n火箭点火，地球在身后缩成一枚灰点。'
+        name: '爱 人 终 于 是 你',
+        text: '血清起效的那一刻，满城的木乃伊褪回人形。\n两侧画面短暂重合——这次你认得出来，只有一个人。\n火箭点火，地球在身后缩成一枚灰点。\n后来我们管那一幕叫「眼中终于是你」。'
       },
       wrong: {
         name: '跟 着 你 的 不 是 她',
