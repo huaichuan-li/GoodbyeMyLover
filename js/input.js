@@ -5,14 +5,15 @@
 
   var MAP = {
     KeyW: 'p1', KeyA: 'p1', KeyS: 'p1', KeyD: 'p1',
-    KeyQ: 'p1', KeyF: 'p1', Space: 'p1', ShiftLeft: 'p1', KeyR: 'p1', KeyE: 'p1',
+    KeyQ: 'p1', KeyF: 'p1', KeyX: 'p1', Space: 'p1', ShiftLeft: 'p1', KeyR: 'p1', KeyE: 'p1', KeyC: 'p1',
     ArrowUp: 'p2', ArrowDown: 'p2', ArrowLeft: 'p2', ArrowRight: 'p2',
-    KeyJ: 'p2', KeyK: 'p2', Enter: 'p2', ShiftRight: 'p2',
+    Semicolon: 'p2', Quote: 'p2', Comma: 'p2', Period: 'p2', Slash: 'p2',
+    BracketLeft: 'p2', BracketRight: 'p2', Backslash: 'p2', Minus: 'p2', Equal: 'p2', ShiftRight: 'p2',
     Tab: 'sys', KeyV: 'sys', KeyM: 'sys', KeyH: 'sys', KeyP: 'sys',
     Escape: 'sys', Digit1: 'sys', Digit2: 'sys', Digit3: 'sys',
     Numpad1: 'sys', Numpad2: 'sys', Numpad3: 'sys'
   };
-  var BLOCK = { Space: 1, Tab: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, Enter: 1 };
+  var BLOCK = { Space: 1, Tab: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, Enter: 1, Semicolon: 1, Quote: 1, Comma: 1, Period: 1, Slash: 1, BracketLeft: 1, BracketRight: 1, Backslash: 1, Minus: 1, Equal: 1 };
 
   var Input = G.Input = {
     down: {}, presses: [], buffer: [],
@@ -21,7 +22,7 @@
         if (BLOCK[e.code]) e.preventDefault();
         if (e.repeat) return;                        // 重复判断交给浏览器：避免丢 keyup 后该键被永久吞掉
         Input.down[e.code] = true;
-        var ev = { code: e.code, owner: MAP[e.code] || 'sys', t: performance.now() / 1000 };
+        var ev = { code: e.code, key: e.key, owner: MAP[e.code] || 'sys', t: performance.now() / 1000 };
         Input.presses.push(ev);
         Input.buffer.push(ev);
         if (Input.buffer.length > 64) Input.buffer.shift();

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>末日爱人 · LAST LOVER ON EARTH · 恐怖 / 即时动作 / 马</title>
+<title>再见？爱人！ · 3D 医院辨认 Demo</title>
 <link rel="stylesheet" href="css/style.css">
 <meta name="theme-color" content="#080b10">
 </head>
@@ -14,28 +14,30 @@
   <div id="split-line" aria-hidden="true"></div>
 
   <div class="hud hud-left" id="hud-left">
-    <div class="hud-tag">A · 人马</div>
-    <div class="hud-row"><span>感染</span><div class="bar"><i id="bar-inf-a"></i></div><b id="num-inf-a">0</b></div>
-    <div class="hud-row"><span>人性</span><div class="bar bar-h"><i id="bar-hum-a"></i></div><b id="num-hum-a">100</b></div>
-    <div class="hud-foot" id="hud-foot-a">血清 ×2 · 00:00</div>
+    <div class="hud-tag">A</div>
+    <div class="hud-row"><span>生命</span><div class="bar"><i id="bar-inf-a"></i></div><b id="num-inf-a">100</b></div>
+    <div class="hud-row"><span>体力</span><div class="bar bar-h"><i id="bar-hum-a"></i></div><b id="num-hum-a">100</b></div>
+    <div class="hud-foot" id="hud-foot-a">一楼 · 未取得手机</div>
+    <canvas class="minimap" id="map-a" width="220" height="110" aria-label="A 已探索地图"></canvas>
+    <div class="phone" id="phone-a">手机未取得</div>
+    <div class="clue" id="clue-a">外貌线索：尚未发现</div>
+    <div class="feed" id="feed-a"></div>
   </div>
 
   <div class="hud hud-right" id="hud-right">
-    <div class="hud-tag">B · 木乃伊</div>
-    <div class="hud-row"><span>感染</span><div class="bar"><i id="bar-inf-b"></i></div><b id="num-inf-b">0</b></div>
-    <div class="hud-row"><span>人性</span><div class="bar bar-h"><i id="bar-hum-b"></i></div><b id="num-hum-b">100</b></div>
-    <div class="hud-foot" id="hud-foot-b">共用一条命</div>
+    <div class="hud-tag">B</div>
+    <div class="hud-row"><span>生命</span><div class="bar"><i id="bar-inf-b"></i></div><b id="num-inf-b">100</b></div>
+    <div class="hud-row"><span>体力</span><div class="bar bar-h"><i id="bar-hum-b"></i></div><b id="num-hum-b">100</b></div>
+    <div class="hud-foot" id="hud-foot-b">一楼 · 未取得手机</div>
+    <canvas class="minimap" id="map-b" width="220" height="110" aria-label="B 已探索地图"></canvas>
+    <div class="phone" id="phone-b">手机未取得</div>
+    <div class="clue" id="clue-b">外貌线索：尚未发现</div>
+    <div class="feed feed-right" id="feed-b"></div>
   </div>
 
   <div id="prompt" class="prompt"></div>
   <div id="mission" class="mission"></div>
   <div id="subtitles" class="subtitles"></div>
-
-  <div id="qte" class="qte hidden">
-    <div class="qte-title">暗号 · 三短一长 <span id="qte-sub">跟着亮点敲</span></div>
-    <div class="qte-track"><div class="qte-cursor" id="qte-cursor"></div><div class="qte-beats" id="qte-beats"></div></div>
-    <div class="qte-hint" id="qte-hint"></div>
-  </div>
 
   <div id="overlay" class="overlay">
     <img id="bg-img" class="bg-art" alt="" decoding="async">
@@ -56,6 +58,7 @@
 <script src="js/recognition.js"></script>
 <script src="js/levels.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/hospital-demo.js"></script>
 <script src="js/boot.js"></script>
 </body>
 </html>

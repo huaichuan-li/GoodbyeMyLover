@@ -7,6 +7,9 @@
     world: { w: 2400, h: 980, pad: 60 },
     view: { duoWidth: 1020, soloWidth: 1420, aspectKeep: true },
     speed: { p1: 205, p2: 178, dash: 540, dashTime: .28, dashCd: 1.1 },
+    stamina: { max: 100, moveCost: .8, dashCost: 12, recover: 5, lowThreshold: 25, lowSpeedMul: .7 },
+    npc: { count: 7, pickupRadius: 90 },
+    phone: { max: 100, idleDrain: 0, smsCost: 0 },
     infection: {
       base: 1.15, dash: 3, touch: 8, mistake: 12, serum: -35,
       accelerateAt: 240, accelerateMul: 1.8, max: 100

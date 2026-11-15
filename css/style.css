@@ -10,6 +10,12 @@ body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sa
 #stage{position:fixed;inset:0;overflow:hidden;background:radial-gradient(ellipse at 50% 45%,#0d1116 0%,#050608 78%)}
 #game{position:absolute;inset:0;width:100%;height:100%;display:block}
 .mission{position:absolute;left:50%;top:17%;transform:translateX(-50%);z-index:7;padding:10px 16px;max-width:min(900px,88vw);text-align:center;background:rgba(7,10,13,.72);border:1px solid rgba(200,161,90,.22);color:#c8c2b5;font-size:12px;letter-spacing:.12em;line-height:1.8;pointer-events:none;text-shadow:0 1px 8px #000}
+.minimap{display:block;width:180px;height:90px;margin-top:10px;border:1px solid rgba(160,180,190,.28);background:#080c10;image-rendering:pixelated}
+.phone,.clue{margin-top:7px;max-width:210px;padding:6px 8px;background:rgba(5,8,10,.7);border-left:2px solid rgba(111,138,145,.65);font-size:10px;line-height:1.5;letter-spacing:.04em;color:#bbb8ad;text-align:left}
+.feed{position:absolute;left:24px;bottom:14%;z-index:8;width:min(360px,42vw);min-height:34px;padding:8px 10px;background:rgba(4,7,10,.78);border-left:2px solid var(--amber);color:#eee2c7;font-size:12px;line-height:1.6;pointer-events:none;text-shadow:0 1px 6px #000}
+.feed-right{left:auto;right:24px;border-left:0;border-right:2px solid var(--cold);text-align:right}
+.hud-right .minimap{margin-left:auto}.hud-right .phone,.hud-right .clue{margin-left:auto;border-left:0;border-right:2px solid rgba(111,138,145,.65);text-align:right}
+.card .keys{font-size:12px}
 .no-webgl #prompt:after{content:' · 当前浏览器未开启 WebGL';color:var(--red)}
 
 #grain{position:absolute;inset:0;pointer-events:none;opacity:.16;mix-blend-mode:overlay;
@@ -76,6 +82,8 @@ body{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sa
 .card .stat{font-size:11px;color:#6d6a62;letter-spacing:.14em;margin-top:16px;font-variant-numeric:tabular-nums}
 .card .opt{display:inline-block;border:1px solid #3a3d40;padding:10px 18px;margin:6px;color:#c9c3b5;font-size:12px;letter-spacing:.12em}
 .card .opt b{color:var(--amber)}
+.start-button{margin:16px auto 0;padding:12px 28px;border:1px solid rgba(200,161,90,.62);background:rgba(200,161,90,.12);color:var(--amber);font:inherit;font-size:13px;letter-spacing:.18em;cursor:pointer;transition:background .15s,border-color .15s}
+.start-button:hover,.start-button:focus-visible{background:rgba(200,161,90,.24);border-color:var(--amber);outline:2px solid rgba(200,161,90,.24);outline-offset:3px}
 .flash{position:absolute;inset:0;z-index:15;pointer-events:none;background:#000;opacity:0;transition:opacity .12s}
 .flash.on{opacity:.55}
 body.present #grain{opacity:.08}

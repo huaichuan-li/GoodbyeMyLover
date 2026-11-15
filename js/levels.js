@@ -1,96 +1,40 @@
-/* 末日医院垂直切片：A 病房区 → B 镜面走廊 → C 发射通道（同一张连通网格） */
-(function () {
-  var G = window.G = window.G || {};
-  var C = G.DATA.config;
-
-  var Level = G.Level = {
-    build: function (w) {
-      w.zones = [
-        { x: 430, y: 110, name: 'A · 病房区' },
-        { x: 1420, y: 110, name: 'B · 镜面走廊' },
-        { x: 2130, y: 110, name: 'C · 发射通道' }
-      ];
-      w.walls = [
-        { x: 0, y: 0, w: 2400, h: 36 }, { x: 0, y: 944, w: 2400, h: 36 },
-        { x: 0, y: 0, w: 36, h: 980 }, { x: 2364, y: 0, w: 36, h: 980 },
-        { x: 300, y: 150, w: 150, h: 62, kind: 'bed' },
-        { x: 300, y: 740, w: 150, h: 62, kind: 'bed' },
-        { x: 560, y: 150, w: 150, h: 62, kind: 'bed' },
-        { x: 560, y: 740, w: 150, h: 62, kind: 'bed' },
-        { x: 980, y: 120, w: 26, h: 250, kind: 'curtain' },
-        { x: 980, y: 640, w: 26, h: 250, kind: 'curtain' },
-        { x: 1260, y: 120, w: 26, h: 230, kind: 'curtain' },
-        { x: 1260, y: 660, w: 26, h: 230, kind: 'curtain' },
-        { x: 1600, y: 150, w: 160, h: 62, kind: 'bed' },
-        { x: 1600, y: 760, w: 160, h: 62, kind: 'bed' },
-        { x: 1880, y: 250, w: 40, h: 130 },
-        { x: 1880, y: 620, w: 40, h: 130 },
-        { x: 1700, y: 200, w: 140, h: 34, kind: 'bed' }   // 地图自我改写时移动这一堵
-      ];
-      w.puddles = [
-        { x: 830, y: 520, r: 112 },
-        { x: 1380, y: 480, r: 96 },
-        { x: 2030, y: 500, r: 82 }
-      ];
-
-      // 多个外观相似的幸存者；相认只能经由主线证据与共同操作
-      var spots = [
-        { x: 760, y: 360, g1: true, g2: true, lover: true },  // 真爱人：P1 侧第 2 / P2 侧第 3
-        { x: 650, y: 610, g1: true, g2: false },
-        { x: 805, y: 300, g1: false, g2: true },
-        { x: 890, y: 640, g1: true, g2: true },
-        { x: 950, y: 430, g1: false, g2: false }
-      ];
-      for (var i = 0; i < spots.length; i++) {
-        var s = spots[i];
-        var e = G.Entities.make({
-          id: 'c' + i, kind: 'candidate', x: s.x, y: s.y, r: 21,
-          trueForm: 'mummy',
-          isLover: !!s.lover, isFake: !s.lover,
-          ghostP1: s.g1, ghostP2: s.g2
-        });
-        G.World.add(w, e);
-        w.candidates.push(e.id);
-        if (s.lover) w.suspectId = e.id;
+/* 三层简化医院：大厅/药房 + 两层各五间科室；角色、交互点均使用 x/y/floor 逻辑坐标。 */
+(function(){
+  var G=window.G=window.G||{};
+  var departments={1:['挂号大厅','药房'],2:['内科','外科','儿科','眼科','口腔科'],3:['急诊科','影像科','检验科','康复科','妇产科']};
+  function add(w,o){G.World.add(w,G.Entities.make(o));}
+  G.Level={departments:departments,build:function(w){
+    w.walls=[];w.puddles=[];w.zones=[];w.candidates=[];w.followers=[];w.entities=[w.p1,w.p2];w.byId={p1:w.p1,p2:w.p2};
+    for(var f=1;f<=3;f++){
+      w.zones.push({floor:f,x:1200,y:490,name:departments[f].join(' · ')});
+      // 隔间墙留下中部走廊通路；五间科室沿南北两翼分布。
+      w.walls.push({x:0,y:0,w:2400,h:36,floor:f},{x:0,y:944,w:2400,h:36,floor:f},{x:0,y:0,w:36,h:980,floor:f},{x:2364,y:0,w:36,h:980,floor:f});
+      for(var i=0;i<5;i++){
+        var x=310+i*350;
+        w.walls.push({x:x,y:125,w:18,h:245,floor:f,kind:'partition'},{x:x,y:610,w:18,h:245,floor:f,kind:'partition'});
       }
-
-      var zs = [
-        { x: 1150, y: 300 }, { x: 1230, y: 700 }, { x: 1520, y: 380 },
-        { x: 1700, y: 620 }, { x: 1920, y: 440 }, { x: 2100, y: 700 }
-      ];
-      for (var z = 0; z < zs.length; z++) {
-        G.World.add(w, G.Entities.make({
-          id: 'z' + z, kind: 'zombie', x: zs[z].x, y: zs[z].y,
-          r: 19, trueForm: 'zombie', speed: 46
-        }));
-      }
-      G.World.add(w, G.Entities.make({ id: 's1', kind: 'pickup', x: 520, y: 300, r: 12, trueForm: 'serum' }));
-      G.World.add(w, G.Entities.make({ id: 's2', kind: 'pickup', x: 1500, y: 700, r: 12, trueForm: 'serum' }));
-
-      // 主线调查站：角色专属证据汇合到同一座急救中继台
-      G.World.add(w, G.Entities.make({ id: 'clueA', kind: 'clue', x: 520, y: 470, r: 24, label: '值班录音' }));
-      G.World.add(w, G.Entities.make({ id: 'clueB', kind: 'clue', x: 1460, y: 460, r: 24, label: '病历残页' }));
-      G.World.add(w, G.Entities.make({ id: 'relay', kind: 'relay', x: 1720, y: 480, r: 30, label: '急救中继台' }));
-      G.World.add(w, G.Entities.make({ id: 'meet', kind: 'meet', x: 2080, y: 500, r: 32, label: '隔离闸门' }));
-
-      w.rocket = { x: 2230, y: 490, w: 120, h: 210 };
+      // stairs / landings sit at the center; walking onto the landing changes floor.
+      add(w,{id:'stairs'+f,kind:'stairs',floor:f,x:1190,y:490,r:62,label:'楼梯'});
     }
-  };
-
-  /* 时间轴：阶段推进的保底（玩家操作优先，避免展示时卡住） */
-  G.Timeline = {
-    seen: {},
-    update: function (w, dt) {
-      var T = C.timeline, st = w.recog.stage;
-      if (w.time >= T.candidates && st === 'IDLE') { w.recog.stage='INVESTIGATE'; G.State.set('RECOGNIZE'); G.Subtitles.push('主线：分头调查值班录音与病历残页，再共同修复中继台。','narration',5); }
-      if (w.recog.together && w.time >= T.choice) G.Timeline.toChoice(w);
-    },
-    toChoice: function (w) {
-      if (G.State.current === 'CHOICE' || G.State.current === 'RESULT') return;
-      G.Recognition.forceVerify(w);
-      G.State.set('CHOICE');
-      G.UI.overlay('choice');
-      G.Synth.bandage();
+    // Reception and pharmacy on floor one; five departments each on floors two and three.
+    departments[1].forEach(function(name,i){add(w,{id:'sign-1-'+i,kind:'room',floor:1,x:420+i*1550,y:115,r:18,label:name});});
+    [2,3].forEach(function(f){departments[f].forEach(function(name,i){var x=420+i*350,y=i%2?760:220;add(w,{id:'sign-'+f+'-'+i,kind:'room',floor:f,x:x,y:y,r:18,label:name});});});
+    // Tabletop objects yield appearance clues. Each clue is private to one player and describes the other.
+    add(w,{id:'clueA',kind:'clue',floor:2,x:420,y:220,r:24,role:'p1',label:'桌上的证件照'});
+    add(w,{id:'clueB',kind:'clue',floor:3,x:1770,y:760,r:24,role:'p2',label:'桌上的围巾'});
+    add(w,{id:'phoneA',kind:'phone',floor:1,x:520,y:760,r:22,role:'p1',label:'手机'});
+    add(w,{id:'phoneB',kind:'phone',floor:1,x:1880,y:220,r:22,role:'p2',label:'手机'});
+    [[2,760,220],[2,1500,760],[3,800,500],[3,2050,490]].forEach(function(q,i){add(w,{id:'food'+i,kind:'food',floor:q[0],x:q[1],y:q[2],r:18,label:'能量棒'});});
+    var states=['still','walk','slowRun','lie','wander'];
+    // Every round reshuffles civilian behaviour independently from their positions.
+    for(var n=0;n<C.npc.count;n++){
+      var f=1+Math.floor(Math.random()*3),x=180+Math.random()*2040,y=100+Math.random()*780;
+      if(Math.abs(x-1190)<150&&Math.abs(y-490)<140)x+=230;
+      var state=states[Math.floor(Math.random()*states.length)];
+      add(w,{id:'npc'+n,kind:'npc',floor:f,x:x,y:y,r:22,state:state,speed:state==='slowRun'?82:(state==='walk'||state==='wander'?42:0),targetX:x,targetY:y,phase:Math.random()*10,trueForm:'human'});
     }
-  };
+    w.recog={stage:'EXPLORE',clueA:false,clueB:false,recognized:false,wrong:false,attempts:0};
+    w.goal='找到桌面物品获取对方外貌线索，再在医院中认出对方。';
+  }};
+  G.Timeline={update:function(){},toChoice:function(){}};
 })();

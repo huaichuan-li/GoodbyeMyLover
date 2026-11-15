@@ -8,7 +8,7 @@
   var Entities = G.Entities = {
     make: function (o) {
       var e = {
-        id: o.id || ('e' + (++uid)), kind: o.kind || 'prop',
+        id: o.id || ('e' + (++uid)), kind: o.kind || 'prop', floor: o.floor || 1,
         x: o.x || 0, y: o.y || 0, vx: 0, vy: 0,
         r: o.r || 20, speed: o.speed || 0,
         facing: { x: 1, y: 0 }, moving: false, alive: true,
@@ -17,7 +17,7 @@
         ghostP1: !!o.ghostP1, ghostP2: !!o.ghostP2,
         blink: o.blink || 0, phase: Math.random() * 6.28,
         label: o.label || '', locked: false, follower: !!o.follower,
-        dashT: 0, dashCd: 0, hitCd: 0
+        dashT: 0, dashCd: 0, hitCd: 0, hp:100, stamina:100, phone:false, clues:[], explored:{1:{},2:{},3:{}}, inbox:[]
       };
       return e;
     },
@@ -32,19 +32,12 @@
   G.World = {
     create: function () {
       // 每局从分散的成对出生区抽签，维持至少约 9 米距离，开场不能直接互相确认。
-      var starts = [
-        [{x:180,y:270},{x:1760,y:730}],
-        [{x:420,y:500},{x:1530,y:470}],
-        [{x:650,y:760},{x:2070,y:260}],
-        [{x:330,y:700},{x:1650,y:300}],
-        [{x:760,y:520},{x:1880,y:720}],
-        [{x:520,y:250},{x:1450,y:760}]
-      ];
-      var spawn = starts[Math.floor(Math.random() * starts.length)];
-      var p1 = Entities.player('p1', spawn[0].x, spawn[0].y, 'centaur', C.speed.p1);
-      var p2 = Entities.player('p2', spawn[1].x, spawn[1].y, 'mummy', C.speed.p2);
+      var starts = [[{x:180,y:270,floor:1},{x:1760,y:730,floor:3}],[{x:420,y:500,floor:2},{x:1530,y:470,floor:1}],[{x:650,y:760,floor:3},{x:2070,y:260,floor:2}],[{x:330,y:700,floor:1},{x:1650,y:300,floor:3}],[{x:760,y:520,floor:2},{x:1880,y:720,floor:1}],[{x:520,y:250,floor:3},{x:1450,y:760,floor:2}]];
+      var spawn=starts[Math.floor(Math.random()*starts.length)];
+      var p1=Entities.player('p1',spawn[0].x,spawn[0].y,'centaur',C.speed.p1),p2=Entities.player('p2',spawn[1].x,spawn[1].y,'mummy',C.speed.p2);
+      p1.floor=spawn[0].floor;p2.floor=spawn[1].floor;
       return {
-        time: 0, infection: 0, humanity: C.humanity.start, serum: C.serum.count,
+        time: 0, infection: 0, humanity: C.humanity.start, serum: 0, phoneMessages:[], floorNames:{1:'一楼',2:'二楼',3:'三楼'}, ended:false,
         entities: [p1, p2], byId: { p1: p1, p2: p2 },
         p1: p1, p2: p2, controlled: 'p1',
         walls: [], puddles: [], props: [], zones: [],
