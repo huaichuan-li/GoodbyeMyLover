@@ -10,7 +10,7 @@
 {"imports":{"three":"./vendor/three/three.module.js","three/addons/":"./vendor/three/examples/jsm/"}}
 </script>
 </head>
-<body>
+<body tabindex="-1">
 <div id="stage">
   <canvas id="game" aria-label="3D 游戏画面"></canvas>
   <div id="grain" aria-hidden="true"></div>
@@ -24,6 +24,8 @@
     <canvas class="minimap" id="map-a" width="220" height="110" aria-label="A 已探索地图"></canvas>
     <div class="phone" id="phone-a">手机未取得</div>
     <div class="clue" id="clue-a">外貌线索：尚未发现</div>
+    <div class="task" id="task-a">主线：找到对方</div>
+    <div class="control-hint" id="controls-a">键盘 WASD 移动 · 拖动鼠标视角 · V 切换视角</div>
     <div class="feed" id="feed-a"></div>
   </div>
 
@@ -35,11 +37,12 @@
     <canvas class="minimap" id="map-b" width="220" height="110" aria-label="B 已探索地图"></canvas>
     <div class="phone" id="phone-b">手机未取得</div>
     <div class="clue" id="clue-b">外貌线索：尚未发现</div>
+    <div class="task task-right" id="task-b">主线：找到对方</div>
+    <div class="control-hint control-hint-right" id="controls-b">等待手柄 · 左摇杆移动 · 右摇杆视角 · Y 切换视角</div>
     <div class="feed feed-right" id="feed-b"></div>
   </div>
 
   <div id="prompt" class="prompt"></div>
-  <div id="mission" class="mission"></div>
   <div id="subtitles" class="subtitles"></div>
 
   <div id="overlay" class="overlay">

@@ -11,7 +11,9 @@ const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.png': 'image/png',
-  '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon'
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp',
+  '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
+  '.glb': 'model/gltf-binary', '.gltf': 'model/gltf+json'
 };
 
 createServer(async (req, res) => {
@@ -33,5 +35,5 @@ createServer(async (req, res) => {
     res.end('404 · ' + e.message);
   }
 }).listen(PORT, '127.0.0.1', () => {
-  console.log(`末日爱人 LAST LOVER ON EARTH → http://127.0.0.1:${PORT}/`);
+  console.log(`再见？爱人！ → http://127.0.0.1:${PORT}/`);
 });

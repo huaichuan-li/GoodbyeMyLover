@@ -19,7 +19,8 @@
         label: o.label || '', locked: false, follower: !!o.follower,
         dashT: 0, dashCd: 0, hitCd: 0, hp:100, stamina:100, phone:false, clues:[], explored:{1:{},2:{},3:{}}, inbox:[]
       };
-      return e;
+      // 保留关卡提供的楼梯目标、线索、NPC 行为等扩展字段。
+      return Object.assign(e, o);
     },
     player: function (id, x, y, form, speed) {
       var e = Entities.make({ id: id, kind: 'player', x: x, y: y, trueForm: form, r: 22, speed: speed });
@@ -32,7 +33,10 @@
   G.World = {
     create: function () {
       // 每局从分散的成对出生区抽签，维持至少约 9 米距离，开场不能直接互相确认。
-      var starts = [[{x:180,y:270,floor:1},{x:1760,y:730,floor:3}],[{x:420,y:500,floor:2},{x:1530,y:470,floor:1}],[{x:650,y:760,floor:3},{x:2070,y:260,floor:2}],[{x:330,y:700,floor:1},{x:1650,y:300,floor:3}],[{x:760,y:520,floor:2},{x:1880,y:720,floor:1}],[{x:520,y:250,floor:3},{x:1450,y:760,floor:2}]];
+      // Place both players in the clear center of a doorway. Earlier starts
+      // could land 5 px outside an opening; the player's 22 px collision radius
+      // then sealed both forward and backward movement against the wall.
+      var starts = [[{x:485,y:490,floor:1},{x:1885,y:490,floor:3}],[{x:835,y:490,floor:2},{x:1535,y:490,floor:1}],[{x:1185,y:490,floor:3},{x:485,y:490,floor:2}],[{x:1535,y:490,floor:1},{x:835,y:490,floor:3}],[{x:1885,y:490,floor:2},{x:1185,y:490,floor:1}],[{x:485,y:490,floor:3},{x:1535,y:490,floor:2}]];
       var spawn=starts[Math.floor(Math.random()*starts.length)];
       var p1=Entities.player('p1',spawn[0].x,spawn[0].y,'centaur',C.speed.p1),p2=Entities.player('p2',spawn[1].x,spawn[1].y,'mummy',C.speed.p2);
       p1.floor=spawn[0].floor;p2.floor=spawn[1].floor;
