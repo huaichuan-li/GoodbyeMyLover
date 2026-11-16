@@ -8,10 +8,11 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
   var canvas = G.utils.el('game');
   var renderer, scene, cameras = {}, flashlights = {}, floors = {}, entities = {}, builtWorld = null;
   var views = {
-    p1: { mode: 'third', yaw: 0, pitch: 0.24, distance: 5.2, dragging: false, lastX: 0, lastY: 0 },
-    p2: { mode: 'third', yaw: 0, pitch: 0.24, distance: 5.2, dragging: false, lastX: 0, lastY: 0 }
+    p1: { mode: 'third', yaw: 0, pitch: 0.18, distance: 3.2, dragging: false, lastX: 0, lastY: 0 },
+    p2: { mode: 'third', yaw: 0, pitch: 0.18, distance: 3.2, dragging: false, lastX: 0, lastY: 0 }
   };
   var sources = {};
+  var stairwell = null;
   // 过渡动画状态
   var floorTransition = { active: false, t: 0, fromFloor: 0, toFloor: 0, fromRole: null };
   var flashEl;
@@ -28,15 +29,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     // 新增：NPC 模型（替换方块人）
     npcZombie: { file: 'npc_zombie_hospital.glb', max: 1.8 },
     npcMummy: { file: 'npc_mummy_stylized.glb', max: 1.8 },
-    npcVampire: { file: 'npc_mummyvamp.glb', max: 1.8 },
-    // 新增：完整环境场景（作为每层的基底装饰背景）
-    // 原始尺寸用 Python 脚本扫过，精确计算 max 让缩后 X 方向覆盖 26m floor
-    // corridor: 原始 X=16.1 Y=39 Z=7.3 → scale=26/16.1=1.62 → max=39*1.62=63 → 缩后 X=26 Z=11.8 ✓
-    // apocalyptic: 原始 maxDim=145(Z) → rotY=90°后 X=145 → scale=26/145=0.179 → max=145*0.179=26 ✓
-    // hospital_room: 原始 maxDim=716(Z) → rotY=90°后 X=716 → scale=26/716=0.0363 → max=716*0.0363=26 ✓
-    envCorridor: { file: 'env_hospital_corridor_china.glb', max: 63, rotY: 0 },
-    envHallway:  { file: 'env_apocalyptic_hallway.glb',       max: 26, rotY: Math.PI / 2 },
-    envRoom:     { file: 'env_hospital_room.glb',              max: 26, rotY: Math.PI / 2 }
+    npcVampire: { file: 'npc_mummyvamp.glb', max: 1.8 }
   };
   var mats = {};
   function mat(name, color, roughness) {
@@ -47,7 +40,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     var mesh = new THREE.Mesh(new THREE.BoxGeometry(size[0], size[1], size[2]), material);
     mesh.name = name;
     mesh.position.set(pos[0], pos[1], pos[2]);
-    mesh.castShadow = false;
+    mesh.castShadow = true;
     mesh.receiveShadow = true;
     parent.add(mesh);
     return mesh;
@@ -72,9 +65,11 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         var maxDim = Math.max(size.x, size.y, size.z) || 1;
         var scale = def.max / maxDim;
         var normalized = new THREE.Group();
-        normalized.add(model);
-        normalized.scale.setScalar(scale);
-        normalized.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
+        var anchor = new THREE.Group();
+        anchor.add(model);
+        anchor.scale.setScalar(scale);
+        anchor.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
+        normalized.add(anchor);
         normalized.userData.sourceBounds = { x: size.x, y: size.y, z: size.z };
         sources[id] = normalized;
         if (builtWorld) buildWorld(builtWorld);
@@ -174,22 +169,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     floors[f] = group;
     scene.add(group);
 
-    // P0: 嵌入开源环境模型作为楼层基底装饰背景
-    // 一楼：中国医院走廊，二楼：末世走廊，三楼：病房
-    var envKey = f === 1 ? 'envCorridor' : (f === 2 ? 'envHallway' : 'envRoom');
-    var env = assetInstance(envKey);
-    if (env) {
-      // 用 wrapper group 做旋转，避免破坏 assetInstance 的归一化位置
-      var envWrap = new THREE.Group();
-      envWrap.add(env);
-      var def = assetDefs[envKey];
-      envWrap.rotation.y = def.rotY || 0;
-      // assetInstance 已把 env 中心放在 (0, y, 0) 且底面贴 y=0
-      // 我们把 envWrap 放在 floor 中心 (12, base, 5.5)
-      // Y 允许超出 4.2m 层高（env 是视觉装饰，天花板会遮住超出部分）
-      envWrap.position.set(12, base, 5.5);
-      group.add(envWrap);
-    }
+    // 完整医院 GLB 的门墙与逻辑布局不同，保留在资产预览台供后续搭建使用。
+    // 可玩区域的墙统一从 w.walls 生成，确保画面、人物碰撞和镜头遮挡一致。
 
     // 地板
     box(group, 'floor', [12, base - 0.22, 0], [26, 0.4, 11], mat('floor', 0x46545c));
@@ -221,11 +202,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     });
 
     // === 楼层间连接：楼梯门和电梯门 ===
-    // 楼梯间走廊入口 - 两侧各一个门洞
+    // 楼梯入口保留地面标记；门墙由逻辑布局生成，避免装饰门柱占住出生点和通道。
     var doorFrameMat = mat('doorframe', 0x3a454d);
-    box(group, 'stair-door-left', [8.5, base + 1.8, 0], [0.4, 3.2, 2.4], doorFrameMat);
-    box(group, 'stair-door-right', [15.3, base + 1.8, 0], [0.4, 3.2, 2.4], doorFrameMat);
-    box(group, 'stair-door-top', [11.9, base + 3.3, 0], [6.8, 0.3, 2.4], doorFrameMat);
     // 楼梯间地面开口（用深色地板表示）
     box(group, 'stair-opening', [11.9, base - 0.1, 0], [2.8, 0.02, 3.2], mat('hole', 0x080c10));
     // 扶手栏 (楼梯入口两侧)
@@ -412,7 +390,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     var outlineGeo = new THREE.BoxGeometry(1.04, 1.84, 1.04);
     var outlineMat = new THREE.MeshBasicMaterial({
       color: 0xffe08a, transparent: true, opacity: 0.28,
-      side: THREE.BackSide, depthTest: false
+      side: THREE.BackSide, depthTest: true
     });
     var outline = new THREE.Mesh(outlineGeo, outlineMat);
     outline.name = '__outline__';
@@ -433,7 +411,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     // 楼层房间
     [1, 2, 3].forEach(function (f) { floorRoom(w, f); });
     // 贯穿三层的楼梯井核心
-    scene.add(buildStairwell());
+    if (stairwell) scene.remove(stairwell);
+    stairwell = buildStairwell();
+    scene.add(stairwell);
     // 实体
     w.entities.forEach(function (e) { var obj = entityObject(e); scene.add(obj); });
     builtWorld = w;
@@ -491,9 +471,22 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     var dx = desired.x - pivot.x, dy = desired.y - pivot.y, dz = desired.z - pivot.z;
     var length = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (!length) return desired;
-    var hit = firstWallHit(w, floor, pivot, desired, 0.08);
+    var hit = firstWallHit(w, floor, pivot, desired, 0.2);
+    // 同时扫过床、桌和门框等当前楼层几何，镜头不能穿进静态场景。
+    var direction = new THREE.Vector3(dx, dy, dz).normalize();
+    var offsets = [[0, 0, 0], [0.12, 0, 0], [-0.12, 0, 0], [0, 0.12, 0], [0, -0.12, 0]];
+    if (floors[floor]) {
+      floors[floor].updateMatrixWorld(true);
+      if (stairwell) stairwell.updateMatrixWorld(true);
+      offsets.forEach(function (offset) {
+        var origin = new THREE.Vector3(pivot.x + offset[0], pivot.y + offset[1], pivot.z + offset[2]);
+        var ray = new THREE.Raycaster(origin, direction, 0, length);
+        var intersections = ray.intersectObjects(stairwell ? [floors[floor], stairwell] : [floors[floor]], true);
+        if (intersections.length) hit = Math.min(hit, intersections[0].distance / length);
+      });
+    }
     if (hit < 1) {
-      var safeT = Math.max(0.015, hit - 0.12 / length);
+      var safeT = Math.max(0, hit - 0.16 / length);
       return { x: pivot.x + dx * safeT, y: pivot.y + dy * safeT, z: pivot.z + dz * safeT };
     }
     return desired;
@@ -512,12 +505,12 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
   }
   function cameraTarget(player, base, role, height) {
     var v = viewState(role), f = forwardFor(role);
-    var target = new THREE.Vector3(player.x / 100, base + (height || 1.2), player.y / 100 - 4.9);
+    var target = new THREE.Vector3(player.x / 100, base + (height || 1.58), player.y / 100 - 4.9);
     var pitch = v.pitch;
     if (v.mode === 'first') {
       var lookDistance = 6;
       target.x += f.x * lookDistance * Math.cos(pitch);
-      target.y += Math.sin(pitch) * lookDistance;
+      target.y -= Math.sin(pitch) * lookDistance;
       target.z += f.z * lookDistance * Math.cos(pitch);
     }
     return target;
@@ -541,8 +534,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
       if (!v.dragging) return;
       var dx = e.clientX - v.lastX, dy = e.clientY - v.lastY;
       v.lastX = e.clientX; v.lastY = e.clientY;
-      v.yaw -= dx * 0.006;
-      v.pitch = clamp(v.pitch - dy * 0.004, -0.72, 0.78);
+      v.yaw += dx * 0.006;
+      v.pitch = clamp(v.pitch + dy * 0.004, -0.72, 0.78);
     });
     var stop = function (e) {
       viewState('p1').dragging = false;
@@ -550,6 +543,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     };
     canvas.addEventListener('pointerup', stop);
     canvas.addEventListener('pointercancel', stop);
+    window.addEventListener('blur', stop);
     canvas.addEventListener('wheel', function (e) {
       var duo = G.Game && (G.Game.mode === 'duo' || G.Game.dualView);
       if (duo && e.clientX >= window.innerWidth / 2) return;
@@ -569,21 +563,22 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
   }
   function resetViews() {
     ['p1', 'p2'].forEach(function (role) {
-      views[role].mode = 'third'; views[role].yaw = 0; views[role].pitch = 0.24;
-      views[role].distance = 5.2; views[role].dragging = false;
+      views[role].mode = 'third'; views[role].yaw = 0; views[role].pitch = 0.18;
+      views[role].distance = 3.2; views[role].dragging = false;
     });
   }
-  function updateGamepadCamera(role, dx, dy) {
+  function updateGamepadCamera(role, dx, dy, dt) {
     var v = viewState(role);
-    if (Math.abs(dx) > 0.01) v.yaw -= dx * 0.035;
-    if (Math.abs(dy) > 0.01) v.pitch = clamp(v.pitch - dy * 0.025, -0.72, 0.78);
+    var seconds = Math.min(Math.max(dt || 0, 0), 0.1);
+    if (Math.abs(dx) > 0.01) v.yaw += dx * 2.1 * seconds;
+    if (Math.abs(dy) > 0.01) v.pitch = clamp(v.pitch + dy * 1.5 * seconds, -0.72, 0.78);
   }
   function view(w, x, width, role) {
     var player = role === 'p1' ? w.p1 : w.p2;
     var base = (player.floor - 1) * 4.2;
     var state = viewState(role);
-    var playerTarget = new THREE.Vector3(player.x / 100, base + 1.2, player.y / 100 - 4.9);
-    var target = cameraTarget(player, base, role, 1.2);
+    var playerTarget = new THREE.Vector3(player.x / 100, base + 1.58, player.y / 100 - 4.9);
+    var target = cameraTarget(player, base, role, 1.58);
     var camera = cameras[role];
     camera.aspect = width / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -593,18 +588,26 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     } else {
       var horizontal = Math.cos(state.pitch) * state.distance;
       var desired = {
-        x: playerTarget.x - f.x * horizontal,
-        y: base + 1.58 + Math.sin(state.pitch) * state.distance,
-        z: playerTarget.z - f.z * horizontal
+        x: playerTarget.x - f.x * horizontal + Math.cos(state.yaw) * 0.5,
+        y: clamp(base + 1.58 + Math.sin(state.pitch) * state.distance, base + 0.35, base + 3.22),
+        z: playerTarget.z - f.z * horizontal + Math.sin(state.yaw) * 0.5
       };
       var safe = cameraBeforeWall(w, player.floor, playerTarget, desired);
       camera.position.set(safe.x, safe.y, safe.z);
+      // 靠肩取景让人物位于画面左侧；回缩到眼睛时也保持原朝向。
+      target.set(safe.x + f.x * Math.cos(state.pitch), safe.y - Math.sin(state.pitch), safe.z + f.z * Math.cos(state.pitch));
     }
     camera.lookAt(target);
 
     // 分屏渲染时只启用当前玩家的手电筒，避免 A/B 的光束互相照亮对方视野。
     Object.keys(flashlights).forEach(function (id) {
-      flashlights[id].visible = id === role;
+      var beam = flashlights[id];
+      beam.visible = id === role;
+      if (id === role) {
+        // 光源留在人物眼前，不随第三人称镜头退到墙角或照向自己。
+        beam.position.set(playerTarget.x, base + 1.58, playerTarget.z);
+        beam.target.position.set(playerTarget.x + f.x * 6 * Math.cos(state.pitch), base + 1.58 - Math.sin(state.pitch) * 6, playerTarget.z + f.z * 6 * Math.cos(state.pitch));
+      }
     });
 
     // 只有当前楼层可见，楼梯井始终可见（贯穿各层）
@@ -616,8 +619,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
       var obj = entities[e.id];
       if (!obj) return;
       obj.position.set(e.x / 100, (e.floor - 1) * 4.2, e.y / 100 - 4.9);
+      obj.traverse(function (child) { if (child.isMesh) child.castShadow = e.id !== player.id; });
       var entityPoint = { x: e.x / 100, y: base + (e.kind === 'player' ? 1.0 : 0.85), z: e.y / 100 - 4.9 };
-      obj.visible = !!e.alive && e.floor === player.floor && !(state.mode === 'first' && e.id === player.id) && !wallOccludes(w, player.floor, camera.position, entityPoint);
+      obj.visible = !!e.alive && e.floor === player.floor && !(e.id === player.id && (state.mode === 'first' || camera.position.distanceTo(playerTarget) < 1.2)) && canSee(w, player, e) && !wallOccludes(w, player.floor, camera.position, entityPoint);
     });
 
     // P0: 边缘高亮——给玩家最近的可交互物体描发光边
@@ -681,8 +685,11 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    // 停电场景仍要保留材质层次；过高的曝光会把手电照到的墙面直接冲成纯白。
+    renderer.toneMappingExposure = 0.9;
     renderer.autoClear = false;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.setScissorTest(true);
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x111a21);
@@ -698,9 +705,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     stairLight.position.set(11.9, 4.2, 0);
     scene.add(stairLight);
     ['p1', 'p2'].forEach(function (id) {
-      cameras[id] = new THREE.PerspectiveCamera(60, 1, 0.1, 80);
+      cameras[id] = new THREE.PerspectiveCamera(60, 1, 0.06, 80);
       scene.add(cameras[id]);
-      var beam = new THREE.SpotLight(0xffe4b2, 145, 18, Math.PI / 7, 0.48, 1.35);
+      // 有限距离与柔和边缘限定视野；恒定衰减避免贴墙时平方反比把墙面冲成白色。
+      var beam = new THREE.SpotLight(0xffe4b2, 2.4, 12, Math.PI / 7, 0.58, 0);
       beam.name = 'flashlight-' + id;
       beam.position.set(0, 0, 0);
       beam.target.position.set(0, 0, -1);
@@ -708,8 +716,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
       beam.shadow.mapSize.set(512, 512);
       beam.shadow.camera.near = 0.1;
       beam.shadow.camera.far = 20;
+      beam.shadow.bias = -0.0002;
+      beam.shadow.normalBias = 0.015;
       flashlights[id] = beam;
-      cameras[id].add(beam, beam.target);
+      scene.add(beam, beam.target);
     });
     installMouseCamera();
     window.addEventListener('resize', resize);

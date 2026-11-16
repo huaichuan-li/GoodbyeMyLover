@@ -36,7 +36,8 @@
       // Place both players in the clear center of a doorway. Earlier starts
       // could land 5 px outside an opening; the player's 22 px collision radius
       // then sealed both forward and backward movement against the wall.
-      var starts = [[{x:485,y:490,floor:1},{x:1885,y:490,floor:3}],[{x:835,y:490,floor:2},{x:1535,y:490,floor:1}],[{x:1185,y:490,floor:3},{x:485,y:490,floor:2}],[{x:1535,y:490,floor:1},{x:835,y:490,floor:3}],[{x:1885,y:490,floor:2},{x:1185,y:490,floor:1}],[{x:485,y:490,floor:3},{x:1535,y:490,floor:2}]];
+      // Keep starts outside the central stair geometry as well as logical walls.
+      var starts = [[{x:485,y:490,floor:1},{x:1885,y:490,floor:3}],[{x:835,y:490,floor:2},{x:1535,y:490,floor:1}],[{x:1885,y:490,floor:3},{x:485,y:490,floor:2}],[{x:1535,y:490,floor:1},{x:835,y:490,floor:3}],[{x:1885,y:490,floor:2},{x:835,y:490,floor:1}],[{x:485,y:490,floor:3},{x:1535,y:490,floor:2}]];
       var spawn=starts[Math.floor(Math.random()*starts.length)];
       var p1=Entities.player('p1',spawn[0].x,spawn[0].y,'centaur',C.speed.p1),p2=Entities.player('p2',spawn[1].x,spawn[1].y,'mummy',C.speed.p2);
       p1.floor=spawn[0].floor;p2.floor=spawn[1].floor;

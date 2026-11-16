@@ -541,11 +541,11 @@
         return;
       }
       if(ph==='BRIEF'){
-        if(ev.code==='Digit2'||ev.code==='Numpad2'||ev.key==='2'||ev.code==='Space')this.reset('duo');
+        if(ev.code==='Digit2'||ev.code==='Numpad2'||ev.key==='2'||ev.code==='Space'||ev.code==='GamepadA'||ev.code==='GamepadStart')this.reset('duo');
         return;
       }
       if(ph==='RESULT'){
-        if(ev.code==='Space'||ev.code==='Enter'||ev.code==='Escape'){G.State.set('TITLE');G.UI.overlay('title');}
+        if(ev.code==='Space'||ev.code==='Enter'||ev.code==='Escape'||ev.code==='GamepadA'||ev.code==='GamepadStart'){G.State.set('TITLE');G.UI.overlay('title');}
         return;
       }
       if(!w)return;
@@ -630,15 +630,15 @@
         +'<h3>核心玩法</h3>'
         +'<ul>'
         +'<li><b>线索</b>：每个科室抽屉里都有线索，捡到后 HUD 会帮你筛选 NPC</li>'
-        +'<li><b>观察</b>：靠近 NPC 按 E——先<em>站着不动 2 秒</em>让自己"隐身"，再观察成功率 100%；直接冲上去观察，成功率 40% 还会被发现</li>'
-        +'<li><b>辨认</b>：按 F 提交——完全匹配反而是错的（NPC 不会有你所有线索），认错扣血+生成镜像怪</li>'
+        +'<li><b>观察</b>：靠近 NPC 按 E / 手柄 A——先<em>站着不动 2 秒</em>让自己"隐身"，再观察成功率 100%；直接冲上去观察，成功率 40% 还会被发现</li>'
+        +'<li><b>辨认</b>：按 F / 手柄 X 提交——完全匹配反而是错的（NPC 不会有你所有线索），认错扣血+生成镜像怪</li>'
         +'<li><b>NPC 会反应</b>：被你看太多次的 NPC 会跑；你们俩人凑到一起，整层 NPC 都不动</li>'
         +'<li><b>视角</b>：A 拖动左屏鼠标，B 使用手柄右摇杆；V / Y 切换第一人称和第三人称，第三人称可环绕观察</li>'
         +'<li><b>紧急同步</b>：A 按 R，B 按手柄 LB，3 秒内响应即可自动联动通知会合</li>'
-        +'<li><b>楼梯</b>：靠近楼梯按 E 切换楼层</li>'
+        +'<li><b>楼梯</b>：靠近楼梯按 E / 手柄 A 切换楼层</li>'
         +'</ul>'
         +'</div>'
-        +'<button type="button" id="start-duo" class="start-button">开始游戏（按 2）</button>';
+        +'<button type="button" id="start-duo" class="start-button">开始游戏（按 2 / 手柄 A）</button>';
     }
     else if(kind==='ending'){
       var titles={recognized:'相认成功',wrong:'辨认失败',abandon:'选择放手'};
