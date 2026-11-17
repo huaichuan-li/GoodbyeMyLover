@@ -106,7 +106,7 @@
       if (role === 'p1') {
         var firstPerson = G.Renderer && G.Renderer.getViewMode && G.Renderer.getViewMode('p1') === 'first';
         return firstPerson
-          ? '键盘 WASD 移动 · 点击左屏捕获鼠标后直接移动视角 · Esc 释放 · V 切换视角 · E 观察 · F 辨认'
+          ? '键盘 WASD 移动 · 点击左屏捕获鼠标后直接移动视角 · Esc 释放 · V 切换视角 · E 观察 · F 辨认 · Shift 冲刺'
           : '键盘 WASD 移动 · 拖动鼠标环视 · V 切换视角 · E 观察 · F 辨认 · Shift 冲刺';
       }
       var status = Input.gamepad ? '手柄已连接' : '等待手柄';

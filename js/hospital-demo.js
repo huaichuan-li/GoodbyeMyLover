@@ -799,7 +799,9 @@
     }
     U.el('task-a').innerHTML=buildTaskHTML('p1');
     U.el('task-b').innerHTML=buildTaskHTML('p2');
-    U.el('prompt').textContent='A：拖动鼠标转视角 · V 切换视角　　B：右摇杆转视角 · Y 切换视角';
+    var promptA = G.Input&&G.Input.controlHints ? G.Input.controlHints('p1') : '键盘 WASD 移动 · 鼠标转视角';
+    var promptB = G.Input&&G.Input.controlHints ? G.Input.controlHints('p2') : '手柄右摇杆转视角';
+    U.el('prompt').textContent='A：'+promptA+'　　B：'+promptB;
     if(G.Subtitles&&G.Subtitles.push){
       var subsEl=U.el('subtitles');
       if(subsEl)subsEl.innerHTML='';
