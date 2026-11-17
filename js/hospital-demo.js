@@ -549,7 +549,11 @@
         return;
       }
       if(!w)return;
-      if(ev.code==='Escape'){G.State.set('TITLE');G.UI.overlay('title');return;}
+      if(ev.code==='Escape'){
+        // 第一人称锁定鼠标时，Esc 由浏览器释放指针锁；不把同一次按键解释为返回标题。
+        if(G.Renderer&&G.Renderer.isMouseLocked&&G.Renderer.isMouseLocked())return;
+        G.State.set('TITLE');G.UI.overlay('title');return;
+      }
       if(ev.code==='KeyM'&&G.Audio){G.Audio.muteAll(1);return;}
       var role=ev.owner;
       if(role==='p2'&&ev.source!=='gamepad')return;
@@ -623,7 +627,7 @@
         +'<p>你们在医院不同楼层醒来，外貌变得陌生。<br>'
         +'探索科室找线索 → 观察 NPC 的特征和行为 → 确认对方是谁。</p>'
         +'<div class="keys">'
-        +'<div><b>A 玩家（键盘+鼠标）</b>：WASD 移动　·　拖动鼠标转视角　·　V 第一/第三人称　·　E 观察　·　F 辨认　·　Shift 冲刺　·　R 同步</div>'
+        +'<div><b>A 玩家（键盘+鼠标）</b>：WASD 移动　·　第一人称点击左屏捕获鼠标后直接移动转视角（Esc 释放）　·　第三人称拖动鼠标环视　·　V 切换视角　·　E 观察　·　F 辨认　·　Shift 冲刺　·　R 同步</div>'
         +'<div><b>B 玩家（外置手柄）</b>：左摇杆移动　·　右摇杆转视角　·　Y 第一/第三人称　·　A 观察　·　X 辨认　·　B 冲刺　·　LB 同步　·　RB 放弃</div>'
         +'</div>'
         +'<div class="tips">'
@@ -633,7 +637,7 @@
         +'<li><b>观察</b>：靠近 NPC 按 E / 手柄 A——先<em>站着不动 2 秒</em>让自己"隐身"，再观察成功率 100%；直接冲上去观察，成功率 40% 还会被发现</li>'
         +'<li><b>辨认</b>：按 F / 手柄 X 提交——完全匹配反而是错的（NPC 不会有你所有线索），认错扣血+生成镜像怪</li>'
         +'<li><b>NPC 会反应</b>：被你看太多次的 NPC 会跑；你们俩人凑到一起，整层 NPC 都不动</li>'
-        +'<li><b>视角</b>：A 拖动左屏鼠标，B 使用手柄右摇杆；V / Y 切换第一人称和第三人称，第三人称可环绕观察</li>'
+        +'<li><b>视角</b>：A 第一人称点击左屏后直接移动鼠标转视角，第三人称拖动鼠标环绕；B 使用手柄右摇杆；V / Y 切换视角</li>'
         +'<li><b>紧急同步</b>：A 按 R，B 按手柄 LB，3 秒内响应即可自动联动通知会合</li>'
         +'<li><b>楼梯</b>：靠近楼梯按 E / 手柄 A 切换楼层</li>'
         +'</ul>'

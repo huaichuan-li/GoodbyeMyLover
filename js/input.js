@@ -103,9 +103,15 @@
       return { x: x / length * strength, y: y / length * strength };
     },
     controlHints: function (role) {
-      if (role === 'p1') return '键盘 WASD 移动 · 拖动鼠标视角 · V 切换视角 · E 观察 · F 辨认 · Shift 冲刺';
+      if (role === 'p1') {
+        var firstPerson = G.Renderer && G.Renderer.getViewMode && G.Renderer.getViewMode('p1') === 'first';
+        return firstPerson
+          ? '键盘 WASD 移动 · 点击左屏捕获鼠标后直接移动视角 · Esc 释放 · V 切换视角 · E 观察 · F 辨认'
+          : '键盘 WASD 移动 · 拖动鼠标环视 · V 切换视角 · E 观察 · F 辨认 · Shift 冲刺';
+      }
       var status = Input.gamepad ? '手柄已连接' : '等待手柄';
-      return status + ' · 左摇杆移动 · 右摇杆视角 · Y 切换视角 · A 观察 · X 辨认 · B 冲刺';
+      var firstPersonB = G.Renderer && G.Renderer.getViewMode && G.Renderer.getViewMode('p2') === 'first';
+      return status + ' · 左摇杆移动 · 右摇杆' + (firstPersonB ? '转视角' : '环视') + ' · Y 切换视角 · A 观察 · X 辨认 · B 冲刺';
     },
     gamepadButtonLabel: function (code) { return GAMEPAD_LABELS[code] || code; },
     /* 移动向量：返回归一化前的原始方向 */

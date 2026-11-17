@@ -522,15 +522,40 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     canvas.addEventListener('pointerdown', function (e) {
       // 鼠标只服务 A 玩家；双屏右半边留给 B 的外置手柄。
       var duo = G.Game && (G.Game.mode === 'duo' || G.Game.dualView);
-      if (duo && e.clientX >= window.innerWidth / 2) return;
+      var locked = document.pointerLockElement === canvas;
+      if (duo && e.clientX >= window.innerWidth / 2 && !locked) return;
       if (e.button !== 0 && e.pointerType !== 'touch') return;
       var v = viewState('p1');
+      if (v.mode === 'first') {
+        // FPS 第一人称：点击一次捕获鼠标，此后用相对位移持续瞄准，不需按住或拖动。
+        v.lastX = e.clientX; v.lastY = e.clientY;
+        if (document.pointerLockElement !== canvas && canvas.requestPointerLock) {
+          try {
+            var lockRequest = canvas.requestPointerLock();
+            if (lockRequest && lockRequest.catch) lockRequest.catch(function () {});
+          } catch (_) {}
+        }
+        if (G.Audio && G.Audio.unlock) G.Audio.unlock();
+        return;
+      }
       v.dragging = true; v.lastX = e.clientX; v.lastY = e.clientY;
       try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
       if (G.Audio && G.Audio.unlock) G.Audio.unlock();
     });
     canvas.addEventListener('pointermove', function (e) {
       var v = viewState('p1');
+      var locked = document.pointerLockElement === canvas;
+      if (v.mode === 'first') {
+        var duo = G.Game && (G.Game.mode === 'duo' || G.Game.dualView);
+        // 锁定状态使用 movementX/Y；若浏览器拒绝指针锁，也保留无按键拖动的直接跟随兜底。
+        var dx = locked || e.movementX !== undefined ? (e.movementX || 0) : e.clientX - v.lastX;
+        var dy = locked || e.movementY !== undefined ? (e.movementY || 0) : e.clientY - v.lastY;
+        if (!locked && duo && e.clientX >= window.innerWidth / 2) return;
+        v.lastX = e.clientX; v.lastY = e.clientY;
+        v.yaw += dx * 0.0025;
+        v.pitch = clamp(v.pitch + dy * 0.002, -0.72, 0.78);
+        return;
+      }
       if (!v.dragging) return;
       var dx = e.clientX - v.lastX, dy = e.clientY - v.lastY;
       v.lastX = e.clientX; v.lastY = e.clientY;
@@ -554,9 +579,13 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
   function toggleView(role) {
     var v = viewState(role);
     v.mode = v.mode === 'first' ? 'third' : 'first';
+    v.dragging = false;
+    if (role === 'p1' && v.mode === 'third' && document.pointerLockElement === canvas && document.exitPointerLock) {
+      document.exitPointerLock();
+    }
     if (G.Game && G.Game.world) {
       var p = role === 'p1' ? G.Game.world.p1 : G.Game.world.p2;
-      p.notice = (v.mode === 'first' ? '第一人称视角：鼠标/右摇杆转动视野。' : '第三人称视角：拖动鼠标/右摇杆环绕观察。');
+      p.notice = (v.mode === 'first' ? (role === 'p1' ? '第一人称：点击左屏捕获鼠标，直接移动鼠标转动视野，按 Esc 释放。' : '第一人称：使用手柄右摇杆转动视野。') : '第三人称视角：拖动鼠标/右摇杆环绕观察。');
       p.noticeUntil = G.Game.world.time + 2.5;
     }
     return v.mode;
@@ -746,6 +775,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     canSee: canSee,
     getCameraYaw: function (role) { return viewState(role).yaw; },
     getViewMode: function (role) { return viewState(role).mode; },
+    isMouseLocked: function () { return !!(canvas && document.pointerLockElement === canvas); },
     getViewLabel: function (role) { return viewState(role).mode === 'first' ? '第一人称' : '第三人称'; }
   };
   G.RendererReady = true;

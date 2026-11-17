@@ -74,7 +74,7 @@ test('WASD moves A at all six spawn pairs, leaving B unchanged', () => {
   context.originalRandom = originalRandom;
   vm.runInContext('Math.random = originalRandom', context);
 });
-test('mouse drag and V affect A only; movement follows camera direction', () => {
+test('third-person mouse drag and V affect A only; movement follows camera direction', () => {
   reset();
   const canvas = elements.get('game');
   canvas.dispatchEvent({ type: 'pointerdown', clientX: 100, clientY: 100, button: 0 });
@@ -90,6 +90,21 @@ test('mouse drag and V affect A only; movement follows camera direction', () => 
   canvas.dispatchEvent({ type: 'pointerdown', clientX: 900, clientY: 100, button: 0 });
   canvas.dispatchEvent({ type: 'pointermove', clientX: 1000, clientY: 100 });
   close(G.Renderer.getCameraYaw('p1'), Math.PI / 2);
+});
+test('first-person mouse look follows movement without holding or dragging', () => {
+  reset();
+  const canvas = elements.get('game');
+  G.Game.onPress({ code: 'KeyV', owner: 'p1' });
+  assert.equal(G.Renderer.getViewMode('p1'), 'first');
+  // No pointerdown and no dragging flag: a direct mouse move must turn A only.
+  canvas.dispatchEvent({ type: 'pointermove', clientX: 140, clientY: 110, movementX: 40, movementY: 10 });
+  close(G.Renderer.getCameraYaw('p1'), 0.1);
+  close(G.Renderer.getCameraYaw('p2'), 0);
+  // Esc is reserved for releasing pointer lock while it is active.
+  document.pointerLockElement = canvas;
+  G.Game.onPress({ code: 'Escape', owner: 'sys' });
+  assert.equal(G.State.current, 'PLAY');
+  document.pointerLockElement = null;
 });
 test('gamepad sticks/buttons affect B only and ignore keyboard arrows', () => {
   const w = reset(), a = position(w.p1);
