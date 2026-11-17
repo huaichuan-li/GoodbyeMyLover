@@ -7,6 +7,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
   if (!G || !G.utils) return;
   var canvas = G.utils.el('game');
   var renderer, scene, cameras = {}, flashlights = {}, floors = {}, entities = {}, builtWorld = null;
+  var hemisphereLight = null, keyLight = null, stairLight = null;
   var views = {
     p1: { mode: 'third', yaw: 0, pitch: 0.18, distance: 3.2, dragging: false, lastX: 0, lastY: 0 },
     p2: { mode: 'third', yaw: 0, pitch: 0.18, distance: 3.2, dragging: false, lastX: 0, lastY: 0 }
@@ -44,6 +45,28 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     mesh.receiveShadow = true;
     parent.add(mesh);
     return mesh;
+  }
+  // 木乃伊基础体（程序化占位）。所有角色共用同一体型，trait 只叠加局部装饰。
+  // 特征与美术文档对应：blueWristband 蓝腕带、darkCoat 深色外层绷带、limpGait 步态（占位不做动画）、
+  // badgeAccessory 银徽章、silverRing 银戒指、scarLeftCheek 左颊疤痕、glassesRound 圆框眼镜、caneDark 深色拐杖。
+  var MUMMY_BODY = 0xc8b89a, MUMMY_HEAD = 0xbfae8f;
+  function buildMummyBody(group, id, traits) {
+    box(group, 'body', [0, 0.7, 0], [0.62, 1.25, 0.58], mat('mummy-body-' + id, MUMMY_BODY));
+    box(group, 'head', [0, 1.55, 0], [0.52, 0.52, 0.52], mat('mummy-head-' + id, MUMMY_HEAD));
+    box(group, 'leg-l', [-0.15, 0.25, 0], [0.18, 0.55, 0.18], mat('mummy-leg-' + id, MUMMY_BODY));
+    box(group, 'leg-r', [0.15, 0.25, 0], [0.18, 0.55, 0.18], mat('mummy-leg-r-' + id, MUMMY_BODY));
+    // 绷带横纹（所有木乃伊都有，程序化示意缠绕感）
+    box(group, 'wrap-1', [0, 0.95, 0.31], [0.64, 0.05, 0.02], mat('wrap-line', 0x9c8c6e));
+    box(group, 'wrap-2', [0, 0.55, 0.31], [0.64, 0.05, 0.02], mat('wrap-line', 0x9c8c6e));
+    if (traits.indexOf('blueWristband') >= 0) box(group, 'trait-blueWristband', [-0.36, 0.9, 0], [0.12, 0.12, 0.6], mat('trait-blue', 0x4a8fc9));
+    if (traits.indexOf('darkCoat') >= 0) box(group, 'trait-darkCoat', [0, 0.75, 0], [0.68, 1.02, 0.62], mat('trait-darkcoat', 0x4a4f57));
+    if (traits.indexOf('badgeAccessory') >= 0) box(group, 'trait-badge', [0.12, 1.12, 0.31], [0.14, 0.14, 0.06], mat('trait-badge', 0xc8ccd1, 0.4));
+    if (traits.indexOf('silverRing') >= 0) box(group, 'trait-ring', [-0.3, 0.42, 0.14], [0.06, 0.06, 0.06], mat('trait-ring', 0xd8dde2, 0.3));
+    if (traits.indexOf('scarLeftCheek') >= 0) box(group, 'trait-scar', [-0.2, 1.58, 0.27], [0.1, 0.02, 0.02], mat('trait-scar', 0xe6dcc8));
+    if (traits.indexOf('glassesRound') >= 0) box(group, 'trait-glasses', [0, 1.6, 0.27], [0.36, 0.1, 0.03], mat('trait-glasses', 0x2a3238, 0.4));
+    if (traits.indexOf('caneDark') >= 0) box(group, 'trait-cane', [0.4, 0.5, 0.1], [0.06, 1.0, 0.06], mat('trait-cane', 0x3b2a1e));
+    // limpGait 是动作差异，占位阶段不做动画，仅在右腿略短体现。
+    if (traits.indexOf('limpGait') >= 0) group.getObjectByName('leg-r') && (group.getObjectByName('leg-r').position.y = 0.2);
   }
   function assetInstance(id) {
     var source = sources[id];
@@ -87,7 +110,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     var railMat = mat('rail', 0x8a959c, 0.3);
     var pipeMat = mat('pipe', 0x606b72, 0.7);
 
-    // 楼梯井：三层共用，从 -1.5 到 14.7 的 Y 空间
+    // 楼梯井：四层共用，从 -1.5 到 14.7 的 Y 空间
     // 楼梯位置在 (11.9, *, 0)，南北走向
     // 楼梯占 X: 10.5~13.3, Z: -1.6~1.6 的空间
 
@@ -156,8 +179,16 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     railLine4.rotation.copy(railLine3.rotation);
     stair2.add(railLine4);
 
+    // === 三楼→四楼楼梯 ===
+    // 三楼到四楼沿用二楼→三楼的几何与朝向，整体上移一个楼层高度。
+    // 这样四层逻辑楼梯与画面中的楼梯井保持一致，后续切层时不会出现悬空入口。
+    var stair3 = stair2.clone(true);
+    stair3.name = 'stair-3to4';
+    stair3.position.y = 4.2;
+
     group.add(stair1);
     group.add(stair2);
+    group.add(stair3);
     return group;
   }
 
@@ -305,51 +336,15 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     group.name = 'entity-' + e.id;
 
     if (e.kind === 'player') {
-      // 玩家：更丰富的外形
-      var isP1 = e.id === 'p1';
-      var bodyColor = isP1 ? 0x53606a : 0x378197;
-      var headColor = 0xb5a895;
-      box(group, 'body', [0, 0.7, 0], [0.62, 1.25, 0.58], mat('body-' + e.id, bodyColor));
-      box(group, 'head', [0, 1.55, 0], [0.52, 0.52, 0.52], mat('head-' + e.id, headColor));
-      // 腿部
-      box(group, 'leg-l', [-0.15, 0.25, 0], [0.18, 0.55, 0.18], mat('leg-' + e.id, bodyColor * 0.7));
-      box(group, 'leg-r', [0.15, 0.25, 0], [0.18, 0.55, 0.18], mat('leg-r-' + e.id, bodyColor * 0.7));
-      // 医疗大褂
-      if (!isP1) {
-        box(group, 'coat', [0, 0.75, 0], [0.65, 1.0, 0.6], mat('coat-p2', 0xe8e4d8));
-        box(group, 'badge', [0.1, 1.12, 0.3], [0.14, 0.14, 0.06], mat('badge-p2', 0xd3c08a));
-        box(group, 'stethoscope', [0.12, 1.0, 0.35], [0.02, 0.4, 0.02], mat('steth', 0x899197));
-      } else {
-        box(group, 'sleeve', [0.28, 1.0, 0], [0.11, 0.1, 0.61], mat('trim-p1', 0xd0c6ae));
-        box(group, 'glasses', [0, 1.58, 0.26], [0.3, 0.12, 0.04], mat('glasses', 0x2a3238));
-      }
-      box(group, 'hair', [isP1 ? 0.36 : -0.2, 1.62, 0], [0.12, 0.36, 0.12], mat('hair-' + e.id, isP1 ? 0xe2a34a : 0x3a3a3a));
+      // 全员木乃伊基础体：两名玩家共用同一套体型，只用 traits 对应的局部装饰做区分
+      // （见《人物设定与美术交付说明》）。不再使用人马/护士外观。
+      buildMummyBody(group, e.id, e.traits || []);
     } else if (e.kind === 'npc') {
-      // P0: 优先使用开源 NPC 模型，fallback 到方块
-      var npcKeys = ['npcZombie', 'npcMummy', 'npcVampire'];
-      var npcKey = npcKeys[Math.floor((e.phase || 0) * 3) % 3];
-      var npcModel = assetInstance(npcKey);
-      var lying = e.state === 'lie';
-      if (npcModel) {
-        npcModel.position.set(0, lying ? 0.3 : 0, 0);
-        if (lying) npcModel.rotation.z = Math.PI / 2;
-        if (e.phase) npcModel.rotation.y = e.phase * Math.PI * 2;
-        group.add(npcModel);
-      } else {
-        // fallback 方块 NPC
-        var phase = e.phase || 0;
-        var height = lying ? 0.24 : (0.92 + (phase % 1) * 0.4);
-        var wide = lying ? 0.9 : 0.48;
-        var palette = [0x77848a, 0x8a7e6a, 0x6a7880, 0x7a6b5e, 0x839096, 0x6d7c84];
-        var bodyColor2 = palette[Math.floor(phase * 7) % palette.length];
-        var headColor2 = 0xa79e91;
-        group.position.y = 0;
-        box(group, 'npc-body', [0, lying ? 0.18 : height * 0.55, 0], [wide, height, 0.48], mat('npc-body-' + e.id, bodyColor2));
-        box(group, 'npc-head', [0, lying ? 0.32 : height + 0.28, 0], [0.4, 0.4, 0.4], mat('npc-head-' + e.id, headColor2));
-        if (phase > 0.75) box(group, 'npc-badge', [0.2, lying ? 0.2 : height * 0.6, 0.28], [0.12, 0.12, 0.05], mat('npc-badge', 0xd3c08a));
-        else if (phase > 0.5) box(group, 'npc-bandage', [0.22, lying ? 0.15 : height * 0.3, 0], [0.1, 0.25, 0.2], mat('npc-bandage', 0xd0c6ae));
-        else if (phase > 0.25) box(group, 'npc-cane', [0.22, lying ? 0.15 : height * 0.3, 0], [0.04, 0.4, 0.04], mat('npc-cane', 0x8c887c));
-      }
+      buildMummyBody(group, e.id, e.traits || []);
+    } else if (e.kind === 'zombie') {
+      buildMummyBody(group, e.id, ['scarLeftCheek']);
+      group.scale.set(1.15,1.15,1.15);
+      group.traverse(function(n){if(n.material)n.material=n.material.clone(),n.material.color.setHex(0x8d3c42);});
     } else if (e.kind === 'phone') {
       var model = assetInstance('phone');
       if (model) {
@@ -360,13 +355,13 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
       }
       // 发光效果
       box(group, 'phone-glow', [0, 0.9, 0], [0.26, 0.02, 0.16], mat('phone-screen', 0xc8a15a));
-    } else if (e.kind === 'food') {
+    } else if (e.kind === 'food' || e.kind === 'medicine') {
       var foodModel = assetInstance('food');
       if (foodModel) {
         foodModel.position.y = 0.22;
         group.add(foodModel);
       } else {
-        box(group, 'food-fallback', [0, 0.22, 0], [0.14, 0.28, 0.14], mat('food-fallback', 0x99b977));
+        box(group, 'food-fallback', [0, 0.22, 0], [0.14, 0.28, 0.14], mat('food-fallback', e.kind==='medicine'?0xc95d55:0x99b977));
       }
     } else if (e.kind === 'clue') {
       // 线索卡：有发光边框
@@ -382,17 +377,32 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
       box(group, 'stairs-arrow', [0, 0.48, 0], [0.6, 0.02, 0.25], mat('stairs-arrow', arrowColor));
       // 楼层标签
       box(group, 'stairs-label', [0, 0.52, 0], [0.5, 0.02, 0.02], mat('stairs-label', arrowColor));
+    } else if (e.kind === 'exit') {
+      box(group,'exit-frame',[0,1.1,0],[1.2,2.2,.18],mat('exit-frame',0x3ddc84));
+      box(group,'exit-glow',[0,2.1,0],[.75,.18,.04],mat('exit-glow',0x9effba));
     } else if (e.kind === 'food' || e.kind === 'battery') {
       // 通用拾取物 fallback
       box(group, 'pickup', [0, 0.22, 0], [0.16, 0.2, 0.16], mat('pickup-fallback', 0x99b977));
     }
     // P0: 预挂边缘高亮 outline mesh（薄壳，不是大方块）
-    var outlineGeo = new THREE.BoxGeometry(1.04, 1.84, 1.04);
+    // 外壳按物体实际包围盒生成：每个方向向外多出物体该方向尺寸的 1/10
+    var OUTLINE_RATIO = 0.1, OUTLINE_MIN = 0.01;
+    group.updateMatrixWorld(true);
+    var bbox = new THREE.Box3().setFromObject(group);
+    var bsize = new THREE.Vector3(), bcenter = new THREE.Vector3();
+    if (bbox.isEmpty()) { bsize.set(1, 1.8, 1); bcenter.set(0, 0.9, 0); }
+    else { bbox.getSize(bsize); bbox.getCenter(bcenter); }
+    var outlineGeo = new THREE.BoxGeometry(
+      bsize.x + 2 * Math.max(bsize.x * OUTLINE_RATIO, OUTLINE_MIN),
+      bsize.y + 2 * Math.max(bsize.y * OUTLINE_RATIO, OUTLINE_MIN),
+      bsize.z + 2 * Math.max(bsize.z * OUTLINE_RATIO, OUTLINE_MIN)
+    );
     var outlineMat = new THREE.MeshBasicMaterial({
       color: 0xffe08a, transparent: true, opacity: 0.28,
       side: THREE.BackSide, depthTest: true
     });
     var outline = new THREE.Mesh(outlineGeo, outlineMat);
+    outline.position.copy(bcenter).sub(group.position);
     outline.name = '__outline__';
     outline.visible = false;
     outline.renderOrder = 999;
@@ -409,8 +419,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     Object.keys(entities).forEach(function (id) { scene.remove(entities[id]); });
     floors = {}; entities = {};
     // 楼层房间
-    [1, 2, 3].forEach(function (f) { floorRoom(w, f); });
-    // 贯穿三层的楼梯井核心
+    [1, 2, 3, 4].forEach(function (f) { floorRoom(w, f); });
+    // 贯穿四层的楼梯井核心
     if (stairwell) scene.remove(stairwell);
     stairwell = buildStairwell();
     scene.add(stairwell);
@@ -631,8 +641,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     // 分屏渲染时只启用当前玩家的手电筒，避免 A/B 的光束互相照亮对方视野。
     Object.keys(flashlights).forEach(function (id) {
       var beam = flashlights[id];
-      beam.visible = id === role;
+      beam.visible = id === role && G.Beam.lightOn(player, w.time);
       if (id === role) {
+        beam.distance = (player.beam && player.beam.range || 1200) / 100;
+        beam.angle = player.beam && player.beam.halfAngle || Math.PI / 7;
         // 光源留在人物眼前，不随第三人称镜头退到墙角或照向自己。
         beam.position.set(playerTarget.x, base + 1.58, playerTarget.z);
         beam.target.position.set(playerTarget.x + f.x * 6 * Math.cos(state.pitch), base + 1.58 - Math.sin(state.pitch) * 6, playerTarget.z + f.z * 6 * Math.cos(state.pitch));
@@ -646,7 +658,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
     w.entities.forEach(function (e) {
       var obj = entities[e.id];
-      if (!obj) return;
+      if (!obj) { obj = entityObject(e); scene.add(obj); }
       obj.position.set(e.x / 100, (e.floor - 1) * 4.2, e.y / 100 - 4.9);
       obj.traverse(function (child) { if (child.isMesh) child.castShadow = e.id !== player.id; });
       var entityPoint = { x: e.x / 100, y: base + (e.kind === 'player' ? 1.0 : 0.85), z: e.y / 100 - 4.9 };
@@ -654,8 +666,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     });
 
     // P0: 边缘高亮——给玩家最近的可交互物体描发光边
-    var interactableKinds = { stairs: 1, clue: 1, phone: 1, food: 1, battery: 1, npc: 1 };
-    var hiliteColor = { stairs: 0x4ddd84, clue: 0xffd68a, phone: 0x6ad9c8, food: 0x99d477, battery: 0x99d477, npc: 0xff7a6a, player: 0x8aa9e8 };
+    var interactableKinds = { stairs: 1, clue: 1, phone: 1, food: 1, medicine:1, exit:1, battery: 1, npc: 1 };
+    var hiliteColor = { stairs: 0x4ddd84, clue: 0xffd68a, phone: 0x6ad9c8, food: 0x99d477, medicine:0xff786b, exit:0x6dff9a, battery: 0x99d477, npc: 0xff7a6a, player: 0x8aa9e8 };
     var nearest = null, nearestDist = Infinity;
     w.entities.forEach(function (e) {
       if (!interactableKinds[e.kind]) return;
@@ -688,6 +700,15 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     if (w && builtWorld !== w) buildWorld(w);
     renderer.clear(true, true, true);
     if (!w) return;
+    // 调试明亮模式只提高环境照明与曝光，保留墙体碰撞、遮挡和手电逻辑。
+    // 普通模式维持停电医院的低环境光，避免改变正式玩法。
+    var bright=!!w.brightMode;
+    if(hemisphereLight)hemisphereLight.intensity=bright?1.15:0.12;
+    if(keyLight)keyLight.intensity=bright?0.72:0.04;
+    if(stairLight)stairLight.intensity=bright?0.9:0.5;
+    renderer.toneMappingExposure=bright?1.15:0.9;
+    if(scene.background)scene.background.setHex(bright?0x4b565d:0x111a21);
+    if(scene.fog)scene.fog.color.setHex(bright?0x4b565d:0x111a21);
     var duo = G.Game.mode === 'duo' || G.Game.dualView;
     if (duo) {
       view(w, 0, window.innerWidth / 2, 'p1');
@@ -724,13 +745,14 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     scene.background = new THREE.Color(0x111a21);
     scene.fog = new THREE.Fog(0x111a21, 34, 80);
     // 停电后的医院：环境光只保留轮廓，角色手电光束承担主要照明。
-    scene.add(new THREE.HemisphereLight(0x71818b, 0x080b0d, 0.12));
-    var key = new THREE.DirectionalLight(0xffefd6, 1.6);
-    key.position.set(-8, 16, 10);
-    key.intensity = 0.04;
-    scene.add(key);
+    hemisphereLight = new THREE.HemisphereLight(0x71818b, 0x080b0d, 0.12);
+    scene.add(hemisphereLight);
+    keyLight = new THREE.DirectionalLight(0xffefd6, 1.6);
+    keyLight.position.set(-8, 16, 10);
+    keyLight.intensity = 0.04;
+    scene.add(keyLight);
     // 楼梯间环境光（贯穿各层）
-    var stairLight = new THREE.PointLight(0x4ab1c8, 0.5, 20);
+    stairLight = new THREE.PointLight(0x4ab1c8, 0.5, 20);
     stairLight.position.set(11.9, 4.2, 0);
     scene.add(stairLight);
     ['p1', 'p2'].forEach(function (id) {
@@ -774,6 +796,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     updateGamepadCamera: updateGamepadCamera,
     canSee: canSee,
     getCameraYaw: function (role) { return viewState(role).yaw; },
+    getCameraPitch: function (role) { return viewState(role).pitch; },
     getViewMode: function (role) { return viewState(role).mode; },
     isMouseLocked: function () { return !!(canvas && document.pointerLockElement === canvas); },
     getViewLabel: function (role) { return viewState(role).mode === 'first' ? '第一人称' : '第三人称'; }

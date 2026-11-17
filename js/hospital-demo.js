@@ -17,15 +17,15 @@
   }
   function actor(w,id){return id==='p1'?w.p1:w.p2;}
   function publish(w,to,text){var target=actor(w,to);target.inbox.unshift({text:text,at:w.time});target.inbox=target.inbox.slice(0,5);}
-  function floorValid(f){return f>=1&&f<=3;}
+  function floorValid(f){return f>=1&&f<=4;}
   function nearest(w,p,role,submit){
     var best=null,bd=C.npc.pickupRadius;
-    var allowed=submit?{npc:1,player:1}:{stairs:1,clue:1,phone:1,food:1,npc:1,player:1};
+    var allowed=submit?{npc:1,player:1}:{stairs:1,clue:1,phone:1,food:1,medicine:1,exit:1,npc:1,player:1};
     w.entities.forEach(function(e){
       if(!e.alive||e.floor!==p.floor||e.id===p.id||!allowed[e.kind])return;
       if(submit&&e.kind!=='npc'&&e.kind!=='player')return;
       if(e.role&&e.role!==role&&e.kind!=='player')return;
-      var d=dist(e,p),priority=e.kind==='stairs'?0.72:(e.kind==='npc'?0.82:1);
+      var d=dist(e,p),priority=e.kind==='stairs'?0.72:(e.kind==='player'?0.55:(e.kind==='npc'?0.82:1));
       if(G.Renderer.canSee && !G.Renderer.canSee(w,p,e))return;
       if(d*priority<bd){best=e;bd=d*priority;}
     });
@@ -225,6 +225,13 @@
   function end(w,key){if(w.ended)return;w.ended=true;w.ending=key;G.State.set('RESULT');if(G.Audio&&G.Audio.stopAmbient)G.Audio.stopAmbient();G.UI.overlay('ending',key);}
 
   function interact(w,role,submit){
+    // 被对方手电筒照住时不能发起任何互动（观察/辨认都不行），只能等判定或自动解除。
+    if(G.Beam&&!G.Beam.canAct(w,role)){
+      var frozenP=actor(w,role);
+      frozenP.notice='你被照住了，动不了，也操作不了。';
+      frozenP.noticeUntil=w.time+1.5;
+      return;
+    }
     var p=actor(w,role),e=nearest(w,p,role,submit);
     if(!e){p.notice=submit?'附近没有可辨认的人。':'附近没有可调查的物品或人。';p.noticeUntil=w.time+1.5;return;}
 
@@ -280,6 +287,16 @@
       return;
     }
 
+    if(e.kind==='medicine'){
+      if(G.Hazard&&G.Hazard.heal(w,e.heal||28,e)){
+        e.alive=false;p.notice='拾取急救药物，共享血量恢复。';p.noticeUntil=w.time+2.5;
+      }else{p.notice='当前无法使用药物。';p.noticeUntil=w.time+1.5;}
+      return;
+    }
+    if(e.kind==='exit'){
+      p.notice='出口已标记。相认后两人同时进入这里才能逃生。';p.noticeUntil=w.time+2.5;return;
+    }
+
     // === NPC（观察 / 辨认）===
     if(e.kind==='npc'){
       if(!submit){
@@ -295,14 +312,14 @@
       // 匹配度逻辑
       if(matchCount===0||totalKnown===0){
         // 没线索或完全不匹配
-        p.hp=Math.max(0,p.hp-10);w.recog.attempts++;
+        if(G.Hazard)G.Hazard.damage(w,10,{downedRole:role}); else p.hp=Math.max(0,p.hp-10);w.recog.attempts++;
         p.notice='你还没有足够线索来判断。或者这个人特征和你知道的完全不同。';
         p.noticeUntil=w.time+2.5;
         // 认错代价：生成一个"镜像怪"
         spawnMirrorClone(w,role,e);
       }else if(matchCount===totalKnown){
         // 完全匹配 = 认错了（因为 NPC 不会有你所有的线索特征）
-        p.hp=Math.max(0,p.hp-25);w.recog.attempts++;w.recog.wrong=true;
+        if(G.Hazard)G.Hazard.damage(w,25,{downedRole:role}); else p.hp=Math.max(0,p.hp-25);w.recog.attempts++;w.recog.wrong=true;
         p.notice='你认错了！这个人的特征完全符合……但反应不对。生命 -25';
         p.noticeUntil=w.time+3;
         spawnMirrorClone(w,role,e);
@@ -311,22 +328,21 @@
         p.notice='部分特征匹配，但还不能确认。继续寻找线索。';
         p.noticeUntil=w.time+2.5;
       }
-      if(p.hp<=0)end(w,'wrong');
+      if(p.hp<=0&&!w.downedRole)end(w,'wrong');
       return;
     }
 
     // === 玩家（真爱）===
     if(e.kind==='player'){
       var otherRole=role==='p1'?'p2':'p1';
-      if(!p.clues.length){p.notice='先找到线索，再辨认眼前的人。';p.noticeUntil=w.time+2.2;return;}
-      var myKnown=knownTraitsOf(p);
-      // 检查是否"认出"——如果双方都在附近并且都提交辨认
-      p.recognizedTarget=true;
-      p.notice='你根据线索认出了对方！等待对方回应……';
-      p.noticeUntil=w.time+3;
-      // 同步给对方
-      if(!G.Game.world[otherRole].notices)G.Game.world[otherRole].notices=[];
-      if(G.Game.world[otherRole].recognizedTarget)return end(w,'recognized');
+      var other=actor(w,otherRole);
+      if(p.floor!==other.floor||dist(p,other)>300){p.notice='相认需要和对方在同一层、三米以内。';p.noticeUntil=w.time+2.2;return;}
+      var rec=w.recognition||{state:'idle',participants:{}};
+      if(rec.state==='active'&&rec.expiresAt<w.time){rec.state='idle';rec.participants={};}
+      if(rec.state!=='active'){rec.state='active';rec.startedAt=w.time;rec.expiresAt=w.time+3;rec.initiator=role;rec.participants={};}
+      rec.participants[role]=true;p.recognizedTarget=true;
+      p.notice='你发起了相认，等待对方在 3 秒内回应。';p.noticeUntil=rec.expiresAt;
+      if(rec.participants[otherRole])return beginEscape(w);
       return;
     }
 
@@ -413,6 +429,13 @@
 
   // ========== 移动 ==========
   function move(w,p,role,dt){
+    if(p.downed){p.moving=false;p.dashT=0;return;}
+    // 被对方手电筒照住时不能移动/冲刺，只能等照方按 是/否 判定，或照方松开光束超过 1.5 秒自动解除。
+    if(G.Beam&&!G.Beam.canAct(w,role)){
+      p.moving=false;
+      p.dashT=Math.max(0,p.dashT-dt);
+      return;
+    }
     var a=G.Input.axis(role);
     if(a.len){
       var speed=p.stamina<C.stamina.lowThreshold?145*C.stamina.lowSpeedMul:145;
@@ -485,16 +508,74 @@
     updateNPCReactions(w,dt);
   }
 
+  function autoPickups(w){
+    ['p1','p2'].forEach(function(id){var p=actor(w,id);if(p.downed)return;(w.entities||[]).forEach(function(e){if(!e.alive||e.floor!==p.floor||e.kind!=='medicine')return;if(dist(p,e)<=70&&G.Hazard&&G.Hazard.heal(w,e.heal||28,e)){e.alive=false;p.notice='拾到急救药物，共享血量恢复。';p.noticeUntil=w.time+2.5;}});});
+  }
+
+  function beginEscape(w){
+    if(w.escape&&w.escape.active)return;
+    w.escape=w.escape||{};w.escape.active=true;w.escape.enemiesSpawned=true;w.flags.escape=true;G.State.set('ESCAPE');
+    var f=w.p1.floor;
+    for(var i=0;i<6;i++)G.World.add(w,G.Entities.make({id:'infected-'+i,kind:'zombie',floor:f,x:260+i*350,y:i%2?260:720,r:24,speed:72,hp:3,hitCd:0,phase:i}));
+    w.p1.notice='相认成功！医院公敌已出现，和同伴一起到出口。';w.p2.notice=w.p1.notice;w.p1.noticeUntil=w.p2.noticeUntil=w.time+5;
+  }
+
+  function updateEscape(w,dt){
+    if(!w.escape||!w.escape.active)return;
+    w.entities.forEach(function(n){if(n.kind!=='zombie'||!n.alive)return;var target=dist(n,w.p1)<dist(n,w.p2)?w.p1:w.p2;if(n.floor!==target.floor)return;var dx=target.x-n.x,dy=target.y-n.y,d=Math.hypot(dx,dy)||1;n.x+=dx/d*n.speed*dt;n.y+=dy/d*n.speed*dt;if(d<65&&n.hitCd<=0){n.hitCd=1.1;if(G.Hazard)G.Hazard.damage(w,8,{downedRole:target.id});}});
+    w.entities.forEach(function(n){if(n.hitCd>0)n.hitCd=Math.max(0,n.hitCd-dt);});
+    var ex=w.entities.find(function(e){return e.kind==='exit'&&e.floor===w.p1.floor;});
+    if(ex&&w.p1.floor===w.p2.floor&&dist(w.p1,ex)<90&&dist(w.p2,ex)<90){w.escape.exitReady=true;end(w,'escaped');}
+  }
+
   // ========== 主 tick ==========
+  function playerDir(role){
+    // 与 render-three.js 的 forwardFor 保持同一坐标系：x->x，y(逻辑)->z(渲染)。
+    var yaw=(G.Renderer&&G.Renderer.getCameraYaw)?G.Renderer.getCameraYaw(role):0;
+    var pitch=(G.Renderer&&G.Renderer.getCameraPitch)?G.Renderer.getCameraPitch(role):0;
+    return {x:Math.sin(yaw)*Math.cos(pitch),y:-Math.sin(pitch),z:-Math.cos(yaw)*Math.cos(pitch)};
+  }
   function tick(w,dt){
     if(!w||w.ended)return;
     w.time+=dt;
+    if(G.Beam){
+      var events=G.Beam.update(w,{p1:playerDir('p1'),p2:playerDir('p2')},dt);
+      events.forEach(function(ev){
+        var victim=actor(w,ev.role),shooterP=actor(w,ev.by);
+        if(ev.type==='flashFreeze'){
+          victim.notice='闪光使你短暂僵住。'; victim.noticeUntil=w.time+0.5;
+        }else if(ev.type==='freeze'){
+          victim.notice='你被手电筒照住了，动不了。等'+(ev.by==='p1'?'A':'B')+'确认。';
+          victim.noticeUntil=w.time+3;
+          shooterP.notice='你照住了对方——'+(ev.by==='p1'?'按 Y 确认是 / N 否':"方向键上 是 / 下 否");
+          shooterP.noticeUntil=w.time+3;
+        }else if(ev.type==='autoRelease'){
+          victim.notice='光束移开了，你能动了。';
+          victim.noticeUntil=w.time+1.5;
+        }
+      });
+    }
     ['p1','p2'].forEach(function(id){var p=actor(w,id);move(w,p,id,dt);markExplore(p);});
+    if(G.Hazard)G.Hazard.update(w,dt);
+    autoPickups(w);
+    if(G.Hazard&&w.downedRole){var rescuer=w.downedRole==='p1'?'p2':'p1';G.Hazard.revive(w,rescuer,dt);}
+    if(w.recognition&&w.recognition.state==='active'&&w.recognition.expiresAt<w.time){w.recognition.state='idle';w.recognition.participants={};w.p1.recognizedTarget=w.p2.recognizedTarget=false;}
     npcUpdate(w,dt);
+    updateEscape(w,dt);
   }
 
+  // ========== 照射判定键位 ==========
+  // P1: KeyY=是 / KeyN=否；P2: Quote=是 / Slash=否。
+  function isBeamKey(code){return code==='KeyY'||code==='KeyN'||code==='Quote'||code==='Slash'||code==='GamepadUp'||code==='GamepadDown';}
+  function beamShooterOf(code){
+    if(code==='KeyY'||code==='KeyN')return 'p1';
+    if(code==='Quote'||code==='Slash'||code==='GamepadUp'||code==='GamepadDown')return 'p2';
+    return null;
+  }
+  function beamAnswer(code){return code==='KeyY'||code==='Quote'||code==='GamepadUp';}
+
   // ========== 游戏入口 ==========
-  G.Hospital={roomAt:roomAt,interact:interact,end:end,tick:tick};
+  G.Hospital={roomAt:roomAt,interact:interact,end:end,tick:tick,beginEscape:beginEscape};
   G.Game=Object.assign(G.Game,{
     init:function(){
       G.Input.attach();
@@ -506,30 +587,152 @@
       G.Loop.start();
     },
     reset:function(mode){
-      this.mode=mode||'duo';
+      // 调试模式仍按双人同屏跑（渲染/HUD 全部复用 duo 分支），只有出生点不同，
+      // 所以对外 this.mode 继续写 'duo'，debugSpawn 单独标记出生点规则。
+      var debug=(mode==='debug');
+      this.mode='duo';
+      this.debugSpawn=debug;
+      this.debugMode=debug;
       this.dualView=false;
       if(G.Renderer&&G.Renderer.resetViews)G.Renderer.resetViews();
-      this.world=G.World.create();
+      this.world=G.World.create({debug:debug,sameFloor:true});
+      this.world.debugMode=debug;
+      this.world.brightMode=false;
       G.Level.build(this.world);
+      if(G.Hazard)G.Hazard.reset(this.world);
       // 初始化 explored 标记
       ['p1','p2'].forEach(function(id){
         var p=actor(this.world,id);
-        p.explored={1:{},2:{},3:{}};
+        p.explored={1:{},2:{},3:{},4:{}};
         p.inbox=[];
         p.clues=[];
-        p.notice='你们在医院不同楼层醒来。寻找桌面线索，认出对方。';
+        p.notice='你们在同一层医院的两端醒来。穿过危险区，寻找线索并认出对方。';
         p.noticeUntil=this.world.time+4;
         p.currentRoom=roomAt(p);
       }.bind(this));
-      G.UI.overlay(null);
-      if(G.Audio){G.Audio.unlock();if(G.Audio.startAmbient)G.Audio.startAmbient();}
-      G.State.set('PLAY');
-      if(G.Subtitles){G.Subtitles.clear();}
+      // 双方主动转动转盘，动画结束后才发放卡牌与能力。
       ['p1','p2'].forEach(function(id){
         var p=actor(this.world,id);
-        var fromRole=id==='p1'?'p2':'p1';
-        publish(this.world,id,'对方在'+actor(this.world,fromRole).floor+'楼醒来。你们需要找到线索互相辨认。');
+        p.beamCard=null;
+        p.beam=G.Beam.effectiveBeam(null);
+        p.cardReady=false;
+        p.debugIndex=0;
+        p.roulette={phase:debug?'debugIdle':'idle',elapsed:0,duration:4.6,rotation:0,index:0};
       }.bind(this));
+      G.UI.overlay(null);
+      if(G.Audio){G.Audio.unlock();if(G.Audio.startAmbient)G.Audio.startAmbient();}
+      if(G.Subtitles){G.Subtitles.clear();}
+      // 先进入抽卡页，两人都确认后才正式开始（PLAY）。
+      G.State.set('DRAW');
+      G.UI.overlay('draw');
+    },
+    turnWheel:function(role){
+      if(G.State.current!=='DRAW'||!this.world)return;
+      var p=actor(this.world,role),r=p.roulette;
+      if(this.debugMode){
+        if(r.phase==='debugIdle'){
+          // 手柄 A / A 玩家确认键第一次按下时锁定当前高亮卡牌，第二次才提交。
+          this.selectDebugCard(role,p.debugIndex||0);
+          return;
+        }
+        if(r.phase==='debugSelected'){
+          r.phase='ready';p.cardReady=true;
+          if(this.world.p1.cardReady&&this.world.p2.cardReady){this.startPlay();return;}
+        }
+        G.UI.updateWheels(this.world);
+        return;
+      }
+      if(r.phase==='idle'){
+        r.card=G.Beam.drawCard();
+        r.index=G.Beam.CARDS.indexOf(r.card);
+        // 指针固定在正上方；每个扇区的中点恰好停在指针下。
+        r.target=360*6+(360-(r.index+0.5)*360/G.Beam.CARDS.length);
+        r.phase='spinning';
+        if(G.Synth)G.Synth.tone(180,.12,'sine',.08);
+      }else if(r.phase==='revealed'){
+        r.phase='ready';p.cardReady=true;
+        if(this.world.p1.cardReady&&this.world.p2.cardReady){this.startPlay();return;}
+      }
+      G.UI.updateWheels(this.world);
+    },
+    skipWheel:function(role){
+      if(this.debugMode||G.State.current!=='DRAW'||!this.world)return false;
+      var p=actor(this.world,role),r=p.roulette;
+      if(r.phase!=='idle'&&r.phase!=='spinning')return false;
+      r.card=G.Beam.drawCard();
+      r.index=G.Beam.CARDS.indexOf(r.card);
+      r.target=360*6+(360-(r.index+0.5)*360/G.Beam.CARDS.length);
+      r.rotation=r.target;
+      r.elapsed=r.duration;
+      r.phase='revealed';
+      p.beamCard=r.card;
+      p.beam=G.Beam.effectiveBeam(r.card);
+      G.UI.updateWheels(this.world);
+      return true;
+    },
+    selectDebugCard:function(role,index){
+      if(!this.debugMode||G.State.current!=='DRAW'||!this.world)return false;
+      var cards=G.Beam.CARDS||[];
+      index=Math.max(0,Math.min(cards.length-1,Number(index)||0));
+      var p=actor(this.world,role),r=p.roulette,card=cards[index];
+      if(!card||r.phase==='ready')return false;
+      p.debugIndex=index;
+      r.index=index;
+      r.card=card;
+      r.phase='debugSelected';
+      p.beamCard=card;
+      p.beam=G.Beam.effectiveBeam(card);
+      p.cardReady=false;
+      G.UI.updateWheels(this.world);
+      return true;
+    },
+    cycleDebugCard:function(role,delta){
+      if(!this.debugMode||G.State.current!=='DRAW'||!this.world)return false;
+      var p=actor(this.world,role),r=p.roulette;
+      if(r.phase==='ready')return false;
+      var n=(G.Beam.CARDS||[]).length||1;
+      var next=((p.debugIndex||0)+(delta||1))%n;
+      if(next<0)next+=n;
+      p.debugIndex=next;
+      G.UI.updateWheels(this.world);
+      return true;
+    },
+    toggleBrightMode:function(){
+      if(!this.debugMode||!this.world)return false;
+      this.world.brightMode=!this.world.brightMode;
+      G.UI.updateWheels(this.world);
+      return this.world.brightMode;
+    },
+    updateWheels:function(dt){
+      var w=this.world;
+      ['p1','p2'].forEach(function(id){
+        var p=actor(w,id),r=p.roulette;
+        if(r.phase!=='spinning')return;
+        r.elapsed=Math.min(r.duration,r.elapsed+dt);
+        var t=r.elapsed/r.duration;
+        r.rotation=r.target*(1-Math.pow(1-t,4));
+        var sector=Math.floor(r.rotation/(360/G.Beam.CARDS.length));
+        if(sector!==r.lastSector){r.lastSector=sector;if(G.Synth)G.Synth.tone(450,.025,'triangle',.025);}
+        if(t>=1){
+          r.phase='revealed';p.beamCard=r.card;p.beam=G.Beam.effectiveBeam(r.card);
+          if(G.Synth){G.Synth.tone(392,.16,'sine',.08);G.Synth.tone(587,.22,'sine',.05);}
+        }
+      });
+      G.UI.updateWheels(w);
+    },
+    // 抽卡页两人都确认后才进入 PLAY，并发出醒来字幕与短信
+    startPlay:function(){
+      var w=this.world;
+      if(!w)return;
+      G.State.set('PLAY');
+      // 抽卡确认完成后必须关闭遮罩，否则画面仍停留在“等待同伴”的抽卡页，
+      // 看起来像另一名玩家无法确认。
+      G.UI.overlay(null);
+      if(G.Subtitles)G.Subtitles.clear();
+      ['p1','p2'].forEach(function(id){
+        var fromRole=id==='p1'?'p2':'p1';
+        publish(w,id,'对方在'+actor(w,fromRole).floor+'楼醒来。你们需要找到线索互相辨认。');
+      });
     },
     onPress:function(ev){
       var ph=G.State.current,w=this.world;
@@ -542,6 +745,35 @@
       }
       if(ph==='BRIEF'){
         if(ev.code==='Digit2'||ev.code==='Numpad2'||ev.key==='2'||ev.code==='Space'||ev.code==='GamepadA'||ev.code==='GamepadStart')this.reset('duo');
+        else if(ev.code==='Digit3'||ev.code==='Numpad3'||ev.key==='3')this.reset('debug');
+        return;
+      }
+      if(ph==='DRAW'){
+        var w0=this.world;
+        if(!w0)return;
+        if(this.debugMode){
+          // 调试模式：A 可用数字键 1-6 或抽卡页按钮选牌，Enter/Y 确认；
+          // B 只响应手柄十字键循环选牌，A 确认，鼠标不会操作 B。
+          var p1Index=-1;
+          if(/^Digit[1-6]$/.test(ev.code))p1Index=Number(ev.code.slice(-1))-1;
+          else if(/^Numpad[1-6]$/.test(ev.code))p1Index=Number(ev.code.slice(-1))-1;
+          if(p1Index>=0){this.selectDebugCard('p1',p1Index);return;}
+          if(ev.code==='KeyL'&&ev.owner!=='p2'){this.toggleBrightMode();return;}
+          if(ev.owner==='p2'&&ev.source==='gamepad'&&ev.code==='GamepadUp'){this.cycleDebugCard('p2',1);return;}
+          if(ev.owner==='p2'&&ev.source==='gamepad'&&ev.code==='GamepadDown'){this.cycleDebugCard('p2',-1);return;}
+          if(ev.code==='KeyY'||ev.code==='Enter'){
+            if(ev.owner==='p2'&&ev.source==='gamepad')this.turnWheel('p2');
+            else this.turnWheel('p1');
+            return;
+          }
+          if(ev.owner==='p2'&&ev.source==='gamepad'&&ev.code==='GamepadA'){this.turnWheel('p2');return;}
+          return;
+        }
+        var drawRole=(ev.code==='KeyY'||ev.code==='Enter')?'p1':
+          (ev.code==='Quote'||(ev.owner==='p2'&&ev.source==='gamepad'&&ev.code==='GamepadA'))?'p2':null;
+        if(ev.code==='KeyK'&&ev.owner!=='p2'){this.skipWheel('p1');return;}
+        if(ev.owner==='p2'&&ev.source==='gamepad'&&ev.code==='GamepadX'){this.skipWheel('p2');return;}
+        if(drawRole)this.turnWheel(drawRole);
         return;
       }
       if(ph==='RESULT'){
@@ -556,9 +788,35 @@
       }
       if(ev.code==='KeyM'&&G.Audio){G.Audio.muteAll(1);return;}
       var role=ev.owner;
-      if(role==='p2'&&ev.source!=='gamepad')return;
+      var beamKey=isBeamKey(ev.code);
+      if(role==='p2'&&ev.source!=='gamepad'&&!beamKey)return;
       if(role!=='p1'&&role!=='p2')return;
       var code=ev.code;
+      // 照射判定：照方的 是/否 键。P1: KeyY 是 / KeyN 否；P2: Quote 是 / Slash 否。
+      // 两人各自独立确认"对方是不是我要找的人"；只有双方都确认"是"才相认成功。
+      if(G.Beam&&beamKey){
+        var shooter=beamShooterOf(code);
+        var answer=beamAnswer(code);
+        if(shooter){
+          var res=G.Beam.confirm(w,shooter,answer);
+          if(res.ok){
+            var victimP=actor(w,res.victim),shooterP=actor(w,res.shooter);
+            shooterP.confirmedYes=(shooterP.confirmedYes||{});
+            shooterP.confirmedYes[res.victim]=answer;
+            shooterP.notice=answer?'你确认了：是对方要找的人。':'你确认了：不是要找的人。';
+            shooterP.noticeUntil=w.time+3;
+            victimP.notice=answer?'对方确认了你的身份。你可以继续行动。':'对方判定你不是要找的人。你可以继续行动。';
+            victimP.noticeUntil=w.time+3;
+            publish(w,res.victim,answer?'对方确认：你是要找的人。':'对方判定：你不是要找的人。');
+            // 双向确认：A 确认 B 是，且 B 也确认 A 是 → 相认成功
+            var aYes=w.p1.confirmedYes&&w.p1.confirmedYes.p2;
+            var bYes=w.p2.confirmedYes&&w.p2.confirmedYes.p1;
+            if(aYes&&bYes)return end(w,'recognized');
+          }
+        }
+        return;
+      }
+      if ((role==='p1'&&code==='KeyQ')||(role==='p2'&&code==='GamepadLT')) { G.Beam.flash(w,role); return; }
       // A 用键盘 V，B 用手柄 Y，各自只切自己的相机。
       if((role==='p1'&&code==='KeyV')||(role==='p2'&&code==='GamepadY')){
         if(G.Renderer&&G.Renderer.toggleView){
@@ -582,7 +840,7 @@
       // 冲刺
       if((role==='p1'&&code==='ShiftLeft')||(role==='p2'&&(code==='ShiftRight'||code==='GamepadB'))){
         var p=actor(w,role);
-        if(p.stamina>=C.stamina.dashCost){p.stamina-=C.stamina.dashCost;p.dashT=.3;}
+        if(G.Beam.canAct(w,role)&&p.stamina>=C.stamina.dashCost){p.stamina-=C.stamina.dashCost;p.dashT=.3;}
       }
       // ========== P1-2: 紧急同步（双方同时按则共享最有价值信息） ==========
       // A：R 键；B：手柄 LB（保留小键盘 . 作为兼容入口）
@@ -592,6 +850,7 @@
     },
     update:function(dt){
       var w=this.world;
+      if(w&&G.State.current==='DRAW')this.updateWheels(dt);
       if(w&&!w.ended&&['PLAY','RECOGNIZE','ESCAPE'].indexOf(G.State.current)>=0)G.Hospital.tick(w,dt);
       if(w)G.UI.update(w);
       if(G.Subtitles)G.Subtitles.update(dt);
@@ -614,21 +873,21 @@
     if(kind==='title'){
       out='<h1>再 见？爱 人！</h1>'
         +'<div class="sub">末日医院 · 黑暗中的双人寻人故事</div>'
-        +'<p>末日来了。医院的感染把你变成了人马，把你的爱人变成了木乃伊。</p>'
+        +'<p>末日来了。医院的感染把每个人都变成了裹满绷带的躯体——你，你的爱人，还有走廊深处的所有陌生人。</p>'
         +'<p>停电后的医院漆黑一片，你们在混乱中失散。只有手电筒照到的地方能看清；楼梯、病房和走廊深处，都可能藏着什么。</p>'
-        +'<p class="warn">感染扭曲了你们的视线：木乃伊眼里全是人马，人马眼里全是木乃伊。找到彼此，也要认出彼此。</p>'
+        +'<p class="warn">感染抹掉了每个人的脸：绷带、步态、身上的旧物才是唯一能分辨彼此的东西。</p>'
         +'<div class="go">按任意键查看操作说明</div>';
     }
     else if(kind==='brief'){
       out='<h2>末 日 医 院 · 第 四 十 一 天</h2>'
-        +'<p>最后一次停电发生在感染爆发之后。你醒来时已经变成人马，爱人变成了木乃伊；医院里全是相似的身影，你们在黑暗中走散。</p>'
-        +'<p>两支手电筒是黑暗里仅有的视野。沿着三层医院寻找线索、听脚步、观察身影，再设法找到对方。感染会让你们把爱人看成怪物，也把陌生人看成爱人。</p>'
+        +'<p>最后一次停电发生在感染爆发之后。你和爱人、还有医院里所有人，都变成了同一种裹满绷带的躯体；你们在黑暗中走散，连彼此的脸都认不出了。</p>'
+        +'<p>两支手电筒是黑暗里仅有的视野。沿着四层医院寻找线索、穿过危险区，再设法找到对方。满城都是同一张脸，只有身上的旧物不会说谎。</p>'
         +'<h3>当前版本操作</h3>'
-        +'<p>你们在医院不同楼层醒来，外貌变得陌生。<br>'
-        +'探索科室找线索 → 观察 NPC 的特征和行为 → 确认对方是谁。</p>'
+        +'<p>你们在同一层医院的两端醒来，外貌变得陌生。<br>'
+        +'穿过小地图标红的危险区 → 观察心率和共享血条 → 在三米内同时相认 → 一起逃到出口。</p>'
         +'<div class="keys">'
-        +'<div><b>A 玩家（键盘+鼠标）</b>：WASD 移动　·　第一人称点击左屏捕获鼠标后直接移动转视角（Esc 释放）　·　第三人称拖动鼠标环视　·　V 切换视角　·　E 观察　·　F 辨认　·　Shift 冲刺　·　R 同步</div>'
-        +'<div><b>B 玩家（外置手柄）</b>：左摇杆移动　·　右摇杆转视角　·　Y 第一/第三人称　·　A 观察　·　X 辨认　·　B 冲刺　·　LB 同步　·　RB 放弃</div>'
+        +'<div><b>A 玩家（键盘+鼠标）</b>：WASD 移动　·　第一人称点击左屏捕获鼠标后直接移动转视角（Esc 释放）　·　第三人称拖动鼠标环视　·　V 切换视角　·　E 观察　·　F 辨认　·　Shift 冲刺　·　R 同步　·　Y 是 / N 否（照到对方时）　·　Q 闪光（闪光灯卡）</div>'
+        +'<div><b>B 玩家（外置手柄）</b>：左摇杆移动　·　右摇杆转视角　·　Y 第一/第三人称　·　A 观察　·　X 辨认　·　B 冲刺　·　LB 同步　·　RB 放弃　·　方向键上 是 / 下 否　·　LT 闪光（闪光灯卡）</div>'
         +'</div>'
         +'<div class="tips">'
         +'<h3>核心玩法</h3>'
@@ -637,17 +896,55 @@
         +'<li><b>观察</b>：靠近 NPC 按 E / 手柄 A——先<em>站着不动 2 秒</em>让自己"隐身"，再观察成功率 100%；直接冲上去观察，成功率 40% 还会被发现</li>'
         +'<li><b>辨认</b>：按 F / 手柄 X 提交——完全匹配反而是错的（NPC 不会有你所有线索），认错扣血+生成镜像怪</li>'
         +'<li><b>NPC 会反应</b>：被你看太多次的 NPC 会跑；你们俩人凑到一起，整层 NPC 都不动</li>'
+        +'<li><b>手电照人</b>：手电筒照住对方时，对方不能动、不能操作；照方按 是/否 判定对方身份，判定后立即解除；照方松开光束超过 1.5 秒也会自动解除</li>'
         +'<li><b>视角</b>：A 第一人称点击左屏后直接移动鼠标转视角，第三人称拖动鼠标环绕；B 使用手柄右摇杆；V / Y 切换视角</li>'
+        +'<li><b>危险区</b>：每层有三个固定污染区，停留超过两秒会持续扣共享血量，视野逐渐模糊；离开后会慢慢恢复。小地图红色区域就是危险区。</li>'
+        +'<li><b>心率与救援</b>：同层十米内心率会加快，只显示等级和声音；共享血量归零后对应玩家倒地，另一名玩家靠近长按 F / 手柄 X 两秒即可救援。</li>'
+        +'<li><b>相认与逃生</b>：两人距离三米内，A 按 F、B 按手柄 X，在三秒窗口内同时发起相认；成功后感染者出现，两人一起到出口胜利。</li>'
         +'<li><b>紧急同步</b>：A 按 R，B 按手柄 LB，3 秒内响应即可自动联动通知会合</li>'
         +'<li><b>楼梯</b>：靠近楼梯按 E / 手柄 A 切换楼层</li>'
         +'</ul>'
         +'</div>'
-        +'<button type="button" id="start-duo" class="start-button">开始游戏（按 2 / 手柄 A）</button>';
+        +'<button type="button" id="start-duo" class="start-button">开始游戏（按 2 / 手柄 A）</button>'
+        +'<button type="button" id="start-debug" class="start-button" style="margin-top:8px;opacity:.8;">调试模式：双人同一出生点（按 3）</button>';
+    }
+    else if(kind==='draw'){
+      if(G.Game.debugMode){
+        function debugPanel(role,label,device){
+          var cards=G.Beam.CARDS.map(function(card,i){
+            return '<button type="button" class="debug-card-choice" data-debug-role="'+role+'" data-debug-index="'+i+'"'+(role==='p2'?' tabindex="-1"':'')+'><b>'+(i+1)+'</b><span>'+card.name+'</span><small>'+card.flavor+'</small></button>';
+          }).join('');
+          return '<section class="debug-card-panel '+role+'"><div class="wheel-player">'+label+' <small>'+device+'</small></div>'
+            +'<div class="debug-card-grid">'+cards+'</div>'
+            +'<div class="debug-card-result" id="debug-result-'+role+'"></div>'
+            +'<button type="button" class="wheel-action debug-confirm" id="debug-confirm-'+role+'"'+(role==='p2'?' tabindex="-1"':'')+'></button></section>';
+        }
+        out='<div class="roulette-intro"><div class="tag">调 试 模 式</div><h2>自由选择六种手电筒功能</h2><p>可直接指定卡牌，便于测试玩法；普通模式仍使用随机大转盘。</p></div>'
+          +'<div class="debug-toolbar"><button type="button" id="debug-bright-toggle" class="start-button"></button><span>A：数字键 1-6 / 点击卡牌，L 切换明亮模式　·　B：手柄十字键选择，A 确认</span></div>'
+          +'<div class="wheel-split debug-split">'+debugPanel('p1','A 玩家','键盘 · 鼠标')+debugPanel('p2','B 玩家','Xbox 手柄 · 鼠标可选')+'</div>'
+          +'<p class="wheel-footer">调试模式不改变碰撞、墙体遮挡或手电照人规则；明亮模式只移除环境黑暗。</p>';
+      }else{
+      function wheel(role,label,device){
+        var labels=G.Beam.CARDS.map(function(card,i){
+          var angle=(i+0.5)*360/G.Beam.CARDS.length;
+          return '<span class="wheel-label" style="transform:rotate('+angle+'deg) translateY(calc(var(--wheel-size) * -.35)) rotate(90deg)">'+card.name+'</span>';
+        }).join('');
+        return '<section class="wheel-panel"><div class="wheel-player">'+label+' <small>'+device+'</small></div>'
+          +'<div class="wheel-stage"><div class="wheel-pointer"></div><div class="fortune-wheel" id="wheel-'+role+'">'+labels+'</div><div class="wheel-hub">命运</div></div>'
+          +'<div class="wheel-result" id="wheel-result-'+role+'" aria-live="polite"></div>'
+          +'<button type="button" class="wheel-action" id="wheel-action-'+role+'"'+(role==='p2'?' tabindex="-1"':'')+'></button>'
+          +'<button type="button" class="wheel-skip" id="wheel-skip-'+role+'"'+(role==='p2'?' tabindex="-1"':'')+'>跳过转盘，直接随机</button></section>';
+      }
+      out='<div class="roulette-intro"><div class="tag">命 运 的 恶 作 剧</div><h2>黑暗里，你会带走什么？</h2><p>各自转动转盘，让命运决定今晚的手电筒。</p></div>'
+        +'<div class="wheel-split">'+wheel('p1','A 玩家','键盘 · 鼠标')+wheel('p2','B 玩家','Xbox 手柄 · 鼠标备用')+'</div>'
+        +'<p class="wheel-footer">每种结果机会相同 · 每人仅转一次 · 双方确认后进入医院</p>';
+      }
     }
     else if(kind==='ending'){
-      var titles={recognized:'相认成功',wrong:'辨认失败',abandon:'选择放手'};
+      var titles={recognized:'相认成功',escaped:'逃出医院',wrong:'辨认失败',abandon:'选择放手'};
       var texts={
-        recognized:'你终于认出了对方。医院的喧嚣仍在继续，但这次你确定没有认错人。你们一起走出了那栋楼。',
+        recognized:'你们在黑暗中认出了彼此。感染者已经醒来，出口就在前方。',
+        escaped:'你们守住了彼此的手电光，一起穿过感染者和出口，终于逃离医院。',
         wrong:'生命耗尽。那些和你长得像的人仍在走廊里游荡，脚步声忽远忽近。',
         abandon:'你选择停止寻找。医院三楼的灯在楼梯井里闪烁着，像是在等一个不会再上来的人。'
       };
@@ -655,12 +952,82 @@
         +'<div class="ending">'+texts[key]+'</div>'
         +'<div class="go">按空格返回标题</div>';
     }
+    c.classList.toggle('roulette-card',kind==='draw');
     c.innerHTML=out;
     U.el('overlay').classList.add('show');
+    if(kind==='draw'){
+      if(G.Game.debugMode){
+        // 调试页两侧卡牌都允许鼠标点击；B 仍可用手柄十字键和 A。
+        Array.prototype.forEach.call(document.querySelectorAll('.debug-card-choice'),function(btn){
+          btn.addEventListener('click',function(){G.Game.selectDebugCard(btn.getAttribute('data-debug-role'),Number(btn.getAttribute('data-debug-index')));});
+        });
+        ['p1','p2'].forEach(function(role){
+          var confirm=U.el('debug-confirm-'+role);
+          if(confirm)confirm.addEventListener('click',function(){G.Game.turnWheel(role);});
+        });
+        var bright=U.el('debug-bright-toggle');
+        if(bright)bright.addEventListener('click',function(){G.Game.toggleBrightMode();});
+      }else{
+        U.el('wheel-action-p1').addEventListener('click',function(){G.Game.turnWheel('p1');});
+        // B 的转盘默认由手柄 A 启动，但鼠标点击也可作为备用输入。
+        U.el('wheel-action-p2').addEventListener('click',function(){G.Game.turnWheel('p2');});
+        U.el('wheel-skip-p1').addEventListener('click',function(){G.Game.skipWheel('p1');});
+        U.el('wheel-skip-p2').addEventListener('click',function(){G.Game.skipWheel('p2');});
+      }
+      // B 的转盘由手柄控制，避免鼠标干扰另一名玩家。
+      G.UI.updateWheels(G.Game.world);
+    }
     if(kind==='brief'){
       var start=U.el('start-duo');
       if(start)start.addEventListener('click',function(){G.Game.reset('duo');});
+      var startDebug=U.el('start-debug');
+      if(startDebug)startDebug.addEventListener('click',function(){G.Game.reset('debug');});
     }
+  };
+
+  G.UI.updateWheels=function(w){
+    if(G.Game.debugMode){
+      var bright=U.el('debug-bright-toggle');
+      if(bright)bright.textContent=w.brightMode?'明亮模式：已开启（点击关闭）':'明亮模式：已关闭（点击去除黑暗）';
+      ['p1','p2'].forEach(function(id){
+        var p=actor(w,id),r=p.roulette;
+        Array.prototype.forEach.call(document.querySelectorAll('.debug-card-choice[data-debug-role="'+id+'"]'),function(btn){
+          var idx=Number(btn.getAttribute('data-debug-index'));
+          btn.classList.toggle('selected',idx===p.debugIndex&&r.phase!=='ready');
+          btn.classList.toggle('locked',r.phase==='ready');
+        });
+        var result=U.el('debug-result-'+id),confirm=U.el('debug-confirm-'+id);
+        if(!result||!confirm)return;
+        if(r.phase==='debugSelected'){
+          result.innerHTML='<h3>'+p.beamCard.name+'</h3><p>'+p.beamCard.flavor+'</p>';
+          confirm.textContent=id==='p1'?'确认选择　Enter / Y':'确认选择　手柄 A';
+          confirm.disabled=false;
+        }else if(r.phase==='ready'){
+          result.innerHTML='<h3>卡牌已收好</h3><p>等待对方完成选择并确认。</p>';
+          confirm.textContent='已确认 · 等待同伴';
+          confirm.disabled=true;
+        }else{
+          result.innerHTML='<h3>请选择一张卡牌</h3><p>'+ (id==='p1'?'点击卡牌或按数字 1-6。':'用手柄十字键选择，再按 A。')+'</p>';
+          confirm.textContent='先选择卡牌';
+          confirm.disabled=true;
+        }
+      });
+      return;
+    }
+    ['p1','p2'].forEach(function(id){
+      var p=actor(w,id),r=p.roulette,button=U.el('wheel-action-'+id),result=U.el('wheel-result-'+id),skip=U.el('wheel-skip-'+id);
+      U.el('wheel-'+id).style.transform='rotate('+r.rotation+'deg)';
+      var key=id==='p1'?'Enter / Y':'手柄 A';
+      var text=r.phase==='idle'?'转动转盘':r.phase==='spinning'?'命运转动中…':r.phase==='revealed'?'收下这份命运':'已确认 · 等待同伴';
+      button.textContent=text+(r.phase==='idle'||r.phase==='revealed'?'　'+key:'');
+      button.disabled=r.phase==='spinning'||r.phase==='ready';
+      if(skip){skip.disabled=r.phase==='revealed'||r.phase==='ready';skip.textContent=r.phase==='revealed'||r.phase==='ready'?'已完成随机':'跳过转盘，直接随机';}
+      if(result.dataset && result.dataset.phase===r.phase)return;
+      if(result.dataset)result.dataset.phase=r.phase;
+      result.innerHTML=r.phase==='revealed'?'<h3>'+p.beamCard.name+'</h3><p>'+p.beamCard.flavor+'</p>':
+        r.phase==='ready'?'<h3>卡牌已收好</h3><p>等待对方完成转盘并确认。</p>':
+        r.phase==='spinning'?'<h3>光束会落在哪里？</h3><p>转盘正在减速，请稍候。</p>':'<h3>六种命运，一束光</h3><p>按下按键，转动你自己的转盘。</p>';
+    });
   };
 
   function drawMap(role){
@@ -684,6 +1051,7 @@
       ctx.fillStyle='rgba(115,150,157,.38)';
       ctx.fillRect(gx*27.5,gy*27.5,27,27);
     });
+    (w.hazardZones||[]).forEach(function(z){if(z.floor!==p.floor)return;var zx=(z.x-z.w/2)/2400*220,zy=(z.y-z.h/2)/980*110,zw=z.w/2400*220,zh=z.h/980*110;ctx.fillStyle='rgba(180,69,60,.25)';ctx.fillRect(zx,zy,zw,zh);ctx.strokeStyle='rgba(220,91,76,.85)';ctx.strokeRect(zx,zy,zw,zh);});
     // 当前位置
     ctx.fillStyle='#d8b56c';
     ctx.beginPath();ctx.arc(p.x/2400*220,p.y/980*110,4,0,Math.PI*2);ctx.fill();
@@ -711,11 +1079,14 @@
     var ids=['p1','p2'];
     ids.forEach(function(id){
       var p=actor(w,id),s=id==='p1'?'a':'b';
-      U.el('bar-inf-'+s).style.width=p.hp+'%';
-      U.el('num-inf-'+s).textContent=p.hp;
+      U.el('bar-inf-'+s).style.width=(w.sharedHp||p.hp)+'%';
+      U.el('num-inf-'+s).textContent=Math.ceil(w.sharedHp||p.hp);
       U.el('bar-hum-'+s).style.width=p.stamina+'%';
       U.el('num-hum-'+s).textContent=Math.round(p.stamina);
       U.el('hud-foot-'+s).textContent=p.floor+'楼 · '+(p.phone?'手机已取得':'未取得手机')+(p.clues.length?' · '+p.clues.length+' 条线索':'');
+      var heartLabel=p.heartLevel>=3?'危险':(p.heartLevel===2?'急促':(p.heartLevel===1?'偏快':'平稳'));
+      var heartEl=U.el('heart-'+s);if(heartEl)heartEl.textContent='心率 '+Math.round(p.heartRate)+' · '+heartLabel+(p.downed?' · 倒地':'');
+      var haze=U.el('vision-haze-'+s);if(haze){haze.style.opacity=String(Math.min(.82,p.visionBlur));haze.style.backdropFilter='blur('+(p.visionBlur*7).toFixed(1)+'px)';haze.style.webkitBackdropFilter='blur('+(p.visionBlur*7).toFixed(1)+'px)';}
       var viewLabel=G.Renderer&&G.Renderer.getViewLabel?G.Renderer.getViewLabel(id):'第三人称';
       var controlEl=U.el('controls-'+s);
       if(controlEl)controlEl.textContent=(G.Input&&G.Input.controlHints?G.Input.controlHints(id):'')+' · 当前：'+viewLabel;
@@ -747,6 +1118,21 @@
         }
       }
       if(p.hasMeetClue)clueText+=' · 会合提示已发现';
+      U.el('clue-'+s).textContent=clueText;
+
+      // 光束照到的人物直接展示全部外貌，且遵守遮挡和卡牌效果。
+      var dir=playerDir(id), visiblePerson=null;
+      w.entities.forEach(function(e){
+        if(!e.alive || e.id===id || (e.kind!=='player'&&e.kind!=='npc'))return;
+        if(G.Beam.hits(w,p,dir,e) && (!visiblePerson || dist(p,e)<dist(p,visiblePerson)))visiblePerson=e;
+      });
+      var target=actor(w,id==='p1'?'p2':'p1'), lock=w.beam&&w.beam.lock[target.id];
+      if(visiblePerson && !(p.beam&&p.beam.hideTraits)) clueText+=' · 照见：'+(visiblePerson.traits||[]).map(function(t){return TRAIT_INFO[t]?TRAIT_INFO[t].label:t;}).join('、');
+      if(lock && lock.by===id && !lock.flash) clueText+=' · '+(id==='p1'?'Y 是 / N 否':'方向键上 是 / 下 否');
+      if(!G.Beam.canAct(w,id)) clueText+=' · 被照住，等待对方确认';
+      if(p.downed)clueText+=' · 倒地：等待同伴长按 '+(id==='p1'?'F':'手柄 X')+' 救援';
+      if(w.recognition&&w.recognition.state==='active')clueText+=' · 相认窗口 '+Math.max(0,w.recognition.expiresAt-w.time).toFixed(1)+' 秒';
+      if(w.escape&&w.escape.active&&!w.ended)clueText+=' · 医院公敌：两人一起前往出口';
       U.el('clue-'+s).textContent=clueText;
 
       // 手机消息

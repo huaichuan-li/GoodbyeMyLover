@@ -17,7 +17,9 @@
         ghostP1: !!o.ghostP1, ghostP2: !!o.ghostP2,
         blink: o.blink || 0, phase: Math.random() * 6.28,
         label: o.label || '', locked: false, follower: !!o.follower,
-        dashT: 0, dashCd: 0, hitCd: 0, hp:100, stamina:100, phone:false, clues:[], explored:{1:{},2:{},3:{}}, inbox:[]
+        dashT: 0, dashCd: 0, hitCd: 0, hp:100, stamina:100, phone:false, clues:[], explored:{1:{},2:{},3:{},4:{}}, inbox:[],
+        heartRate:60, heartLevel:0, visionBlur:0, dangerT:0, downed:false, reviveProgress:0,
+        traits:[], notice:'', noticeUntil:0
       };
       // 保留关卡提供的楼梯目标、线索、NPC 行为等扩展字段。
       return Object.assign(e, o);
@@ -31,18 +33,40 @@
 
   /* ---------- world ---------- */
   G.World = {
-    create: function () {
+    create: function (opts) {
       // 每局从分散的成对出生区抽签，维持至少约 9 米距离，开场不能直接互相确认。
       // Place both players in the clear center of a doorway. Earlier starts
       // could land 5 px outside an opening; the player's 22 px collision radius
       // then sealed both forward and backward movement against the wall.
       // Keep starts outside the central stair geometry as well as logical walls.
-      var starts = [[{x:485,y:490,floor:1},{x:1885,y:490,floor:3}],[{x:835,y:490,floor:2},{x:1535,y:490,floor:1}],[{x:1885,y:490,floor:3},{x:485,y:490,floor:2}],[{x:1535,y:490,floor:1},{x:835,y:490,floor:3}],[{x:1885,y:490,floor:2},{x:835,y:490,floor:1}],[{x:485,y:490,floor:3},{x:1535,y:490,floor:2}]];
-      var spawn=starts[Math.floor(Math.random()*starts.length)];
-      var p1=Entities.player('p1',spawn[0].x,spawn[0].y,'centaur',C.speed.p1),p2=Entities.player('p2',spawn[1].x,spawn[1].y,'mummy',C.speed.p2);
+      // 同层首版：A/B 从同一层两端出发，路线中间必须穿过危险区。
+      // 保留六组不同楼层/端点组合，方便回归测试和调试模式复现。
+      var starts = [[{x:485,y:490,floor:2},{x:1885,y:490,floor:2}],[{x:835,y:490,floor:1},{x:1535,y:490,floor:1}],[{x:1885,y:490,floor:3},{x:485,y:490,floor:3}],[{x:1535,y:490,floor:4},{x:835,y:490,floor:4}],[{x:1885,y:490,floor:2},{x:835,y:490,floor:2}],[{x:485,y:490,floor:3},{x:1535,y:490,floor:3}]];
+      var debug = !!(opts && opts.debug);
+      var spawn;
+      if (opts && opts.sameFloor) {
+        var sf = (opts.floor && opts.floor >= 1 && opts.floor <= 4) ? opts.floor : 2;
+        var left = opts.left || 485, right = opts.right || 1885;
+        spawn = [{x:left,y:490,floor:sf},{x:right,y:490,floor:sf}];
+      } else if (debug) {
+        // 调试模式：两人同楼层、同一门洞附近，左右各偏移 40 逻辑单位（共 80 ≈ 0.8m），
+        // 够两人碰撞半径（各 22）不重叠卡死，又几乎贴在一起，一睁眼就能看到对方。
+        var base = starts[0][0];
+        spawn = [
+          { x: base.x - 40, y: base.y, floor: base.floor },
+          { x: base.x + 40, y: base.y, floor: base.floor }
+        ];
+      } else {
+        spawn = starts[Math.floor(Math.random()*starts.length)];
+      }
+      // 全员木乃伊：两名玩家同一基础体型（旧的人马形态已撤销，见《人物设定与美术交付说明》）。
+      var p1=Entities.player('p1',spawn[0].x,spawn[0].y,'mummy',C.speed.p1),p2=Entities.player('p2',spawn[1].x,spawn[1].y,'mummy',C.speed.p2);
       p1.floor=spawn[0].floor;p2.floor=spawn[1].floor;
       return {
-        time: 0, infection: 0, humanity: C.humanity.start, serum: 0, phoneMessages:[], floorNames:{1:'一楼',2:'二楼',3:'三楼'}, ended:false,
+        time: 0, infection: 0, humanity: C.humanity.start, serum: 0, phoneMessages:[], floorCount:4, floorNames:{1:'一楼',2:'二楼',3:'三楼',4:'四楼'}, ended:false,
+        sharedHp: 100, sharedHpMax: 100, downedRole: null, downedAt: 0,
+        recognition: { state:'idle', startedAt:0, expiresAt:0, initiator:null, participants:{} },
+        escape: { active:false, enemiesSpawned:false, enemyCount:6, exitReady:false },
         entities: [p1, p2], byId: { p1: p1, p2: p2 },
         p1: p1, p2: p2, controlled: 'p1',
         walls: [], puddles: [], props: [], zones: [],

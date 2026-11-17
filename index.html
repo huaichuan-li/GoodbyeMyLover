@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>再见？爱人！ · 3D 医院辨认 Demo</title>
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=roulette-1">
 <meta name="theme-color" content="#080b10">
 <script type="importmap">
 {"imports":{"three":"./vendor/three/three.module.js","three/addons/":"./vendor/three/examples/jsm/"}}
@@ -15,10 +15,13 @@
   <canvas id="game" aria-label="3D 游戏画面"></canvas>
   <div id="grain" aria-hidden="true"></div>
   <div id="split-line" aria-hidden="true"></div>
+  <div class="vision-haze vision-haze-a" id="vision-haze-a" aria-hidden="true"></div>
+  <div class="vision-haze vision-haze-b" id="vision-haze-b" aria-hidden="true"></div>
 
   <div class="hud hud-left" id="hud-left">
     <div class="hud-tag">A</div>
     <div class="hud-row"><span>生命</span><div class="bar"><i id="bar-inf-a"></i></div><b id="num-inf-a">100</b></div>
+    <div class="heart" id="heart-a">心率 60 · 平稳</div>
     <div class="hud-row"><span>体力</span><div class="bar bar-h"><i id="bar-hum-a"></i></div><b id="num-hum-a">100</b></div>
     <div class="hud-foot" id="hud-foot-a">一楼 · 未取得手机</div>
     <canvas class="minimap" id="map-a" width="220" height="110" aria-label="A 已探索地图"></canvas>
@@ -32,6 +35,7 @@
   <div class="hud hud-right" id="hud-right">
     <div class="hud-tag">B</div>
     <div class="hud-row"><span>生命</span><div class="bar"><i id="bar-inf-b"></i></div><b id="num-inf-b">100</b></div>
+    <div class="heart heart-right" id="heart-b">心率 60 · 平稳</div>
     <div class="hud-row"><span>体力</span><div class="bar bar-h"><i id="bar-hum-b"></i></div><b id="num-hum-b">100</b></div>
     <div class="hud-foot" id="hud-foot-b">一楼 · 未取得手机</div>
     <canvas class="minimap" id="map-b" width="220" height="110" aria-label="B 已探索地图"></canvas>
@@ -63,8 +67,10 @@
 <script src="js/systems.js"></script>
 <script src="js/recognition.js"></script>
 <script src="js/levels.js"></script>
+<script src="js/beam.js"></script>
+<script src="js/hazard.js"></script>
 <script src="js/ui.js"></script>
-<script src="js/hospital-demo.js"></script>
+<script src="js/hospital-demo.js?v=roulette-1"></script>
 <script src="js/boot.js"></script>
 <script type="module" src="js/render-three.js"></script>
 </body>

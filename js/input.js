@@ -5,7 +5,7 @@
 
   var MAP = {
     KeyW: 'p1', KeyA: 'p1', KeyS: 'p1', KeyD: 'p1',
-    KeyQ: 'p1', KeyF: 'p1', KeyX: 'p1', Space: 'p1', ShiftLeft: 'p1', KeyR: 'p1', KeyE: 'p1', KeyC: 'p1', KeyV: 'p1',
+    KeyQ: 'p1', KeyF: 'p1', KeyX: 'p1', Space: 'p1', ShiftLeft: 'p1', KeyR: 'p1', KeyE: 'p1', KeyC: 'p1', KeyV: 'p1', KeyY: 'p1', KeyN: 'p1',
     ArrowUp: 'p2', ArrowDown: 'p2', ArrowLeft: 'p2', ArrowRight: 'p2',
     Semicolon: 'p2', Quote: 'p2', Comma: 'p2', Period: 'p2', Slash: 'p2',
     BracketLeft: 'p2', BracketRight: 'p2', Backslash: 'p2', Minus: 'p2', Equal: 'p2', ShiftRight: 'p2',
@@ -15,11 +15,11 @@
   };
   var BLOCK = { Space: 1, Tab: 1, ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1, Enter: 1, Semicolon: 1, Quote: 1, Comma: 1, Period: 1, Slash: 1, BracketLeft: 1, BracketRight: 1, Backslash: 1, Minus: 1, Equal: 1 };
 
-  var GAMEPAD_CODES = ['GamepadA', 'GamepadB', 'GamepadX', 'GamepadY', 'GamepadLB', 'GamepadRB', 'GamepadBack', 'GamepadStart'];
-  var GAMEPAD_INDICES = [0, 1, 2, 3, 4, 5, 8, 9];
+  var GAMEPAD_CODES = ['GamepadA', 'GamepadB', 'GamepadX', 'GamepadY', 'GamepadLB', 'GamepadRB', 'GamepadBack', 'GamepadStart', 'GamepadLT', 'GamepadUp', 'GamepadDown'];
+  var GAMEPAD_INDICES = [0, 1, 2, 3, 4, 5, 8, 9, 6, 12, 13];
   var GAMEPAD_LABELS = {
     GamepadA: 'A', GamepadB: 'B', GamepadX: 'X', GamepadY: 'Y',
-    GamepadLB: 'LB', GamepadRB: 'RB', GamepadBack: 'View', GamepadStart: 'Menu'
+    GamepadLB: 'LB', GamepadRB: 'RB', GamepadBack: 'View', GamepadStart: 'Menu', GamepadLT: 'LT', GamepadUp: '方向键上', GamepadDown: '方向键下'
   };
   var Input = G.Input = {
     down: {}, presses: [], buffer: [], gamepad: null, gamepadButtons: [], gamepadName: '', attached: false,
@@ -106,12 +106,12 @@
       if (role === 'p1') {
         var firstPerson = G.Renderer && G.Renderer.getViewMode && G.Renderer.getViewMode('p1') === 'first';
         return firstPerson
-          ? '键盘 WASD 移动 · 点击左屏捕获鼠标后直接移动视角 · Esc 释放 · V 切换视角 · E 观察 · F 辨认 · Shift 冲刺'
-          : '键盘 WASD 移动 · 拖动鼠标环视 · V 切换视角 · E 观察 · F 辨认 · Shift 冲刺';
+          ? '键盘 WASD 移动 · 点击左屏捕获鼠标后直接移动视角 · Esc 释放 · V 切换视角 · E 观察 · F 辨认 · Shift 冲刺 · Y 是 / N 否 · Q 闪光'
+          : '键盘 WASD 移动 · 拖动鼠标环视 · V 切换视角 · E 观察 · F 辨认 · Shift 冲刺 · Y 是 / N 否 · Q 闪光';
       }
       var status = Input.gamepad ? '手柄已连接' : '等待手柄';
       var firstPersonB = G.Renderer && G.Renderer.getViewMode && G.Renderer.getViewMode('p2') === 'first';
-      return status + ' · 左摇杆移动 · 右摇杆' + (firstPersonB ? '转视角' : '环视') + ' · Y 切换视角 · A 观察 · X 辨认 · B 冲刺';
+      return status + ' · 左摇杆移动 · 右摇杆' + (firstPersonB ? '转视角' : '环视') + ' · Y 切换视角 · A 观察 · X 辨认 · B 冲刺 · 方向键上 是 / 下 否 · LT 闪光';
     },
     gamepadButtonLabel: function (code) { return GAMEPAD_LABELS[code] || code; },
     /* 移动向量：返回归一化前的原始方向 */
