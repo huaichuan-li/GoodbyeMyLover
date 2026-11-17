@@ -547,9 +547,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
       var locked = document.pointerLockElement === canvas;
       if (v.mode === 'first') {
         var duo = G.Game && (G.Game.mode === 'duo' || G.Game.dualView);
-        // 锁定状态使用 movementX/Y；若浏览器拒绝指针锁，也保留无按键拖动的直接跟随兜底。
-        var dx = locked || e.movementX !== undefined ? (e.movementX || 0) : e.clientX - v.lastX;
-        var dy = locked || e.movementY !== undefined ? (e.movementY || 0) : e.clientY - v.lastY;
+        // 锁定状态使用相对位移；未锁定时用屏幕坐标差，兼容 movementX 存在但始终为 0 的浏览器。
+        var dx = locked ? (e.movementX || 0) : e.clientX - v.lastX;
+        var dy = locked ? (e.movementY || 0) : e.clientY - v.lastY;
         if (!locked && duo && e.clientX >= window.innerWidth / 2) return;
         v.lastX = e.clientX; v.lastY = e.clientY;
         v.yaw += dx * 0.0025;

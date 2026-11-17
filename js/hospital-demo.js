@@ -564,7 +564,7 @@
         if(G.Renderer&&G.Renderer.toggleView){
           var mode=G.Renderer.toggleView(role);
           var pView=actor(w,role);
-          pView.notice=(mode==='first'?'第一人称视角已启用。':'第三人称视角已启用。')+(role==='p2'?' 右摇杆控制视角。':' 拖动鼠标控制视角。');
+          pView.notice=(mode==='first'?'第一人称视角已启用。':'第三人称视角已启用。')+(role==='p2'?' 右摇杆控制视角。':(mode==='first'?' 点击左屏捕获鼠标，移动鼠标转向；Esc 释放。':' 拖动鼠标环视。'));
           pView.noticeUntil=w.time+2.2;
         }
         return;

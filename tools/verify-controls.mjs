@@ -96,12 +96,16 @@ test('first-person mouse look follows movement without holding or dragging', () 
   const canvas = elements.get('game');
   G.Game.onPress({ code: 'KeyV', owner: 'p1' });
   assert.equal(G.Renderer.getViewMode('p1'), 'first');
-  // No pointerdown and no dragging flag: a direct mouse move must turn A only.
-  canvas.dispatchEvent({ type: 'pointermove', clientX: 140, clientY: 110, movementX: 40, movementY: 10 });
+  // When pointer lock is rejected, browsers may expose movementX/Y as zero;
+  // absolute pointer movement must still turn A without a held button.
+  canvas.dispatchEvent({ type: 'pointerdown', clientX: 100, clientY: 100, button: 0 });
+  canvas.dispatchEvent({ type: 'pointermove', clientX: 140, clientY: 110, movementX: 0, movementY: 0 });
   close(G.Renderer.getCameraYaw('p1'), 0.1);
   close(G.Renderer.getCameraYaw('p2'), 0);
-  // Esc is reserved for releasing pointer lock while it is active.
   document.pointerLockElement = canvas;
+  canvas.dispatchEvent({ type: 'pointermove', clientX: 140, clientY: 110, movementX: 12, movementY: -4 });
+  close(G.Renderer.getCameraYaw('p1'), 0.13);
+  // Esc is reserved for releasing pointer lock while it is active.
   G.Game.onPress({ code: 'Escape', owner: 'sys' });
   assert.equal(G.State.current, 'PLAY');
   document.pointerLockElement = null;
