@@ -139,7 +139,7 @@ test('first-person mouse look follows movement without holding or dragging', () 
   assert.equal(G.State.current, 'PLAY');
   document.pointerLockElement = null;
 });
-test('gamepad sticks/buttons affect B only and ignore keyboard arrows', () => {
+test('gamepad sticks/buttons affect B only', () => {
   const w = reset(), a = position(w.p1);
   pad = { index: 0, id: 'Regression Xbox standard pad', axes: [0, -1, 1, 0], buttons: Array.from({ length: 16 }, () => ({ pressed: false })) };
   G.Input.pollGamepad(1 / 60);
@@ -151,9 +151,6 @@ test('gamepad sticks/buttons affect B only and ignore keyboard arrows', () => {
   for (const event of G.Input.drain()) G.Game.onPress(event);
   assert.equal(G.Renderer.getViewMode('p2'), 'first');
   assert.equal(G.Renderer.getViewMode('p1'), 'third');
-  pad.axes = [0, 0, 0, 0]; key('ArrowUp');
-  const stopped = position(w.p2); step(); key('ArrowUp', false);
-  assert.deepEqual(position(w.p2), stopped);
   // 失焦（iframe 预览/多窗口，hasFocus=false）不应吞掉手柄：只有 document.hidden
   // 为真（页面标签被隐藏）时才暂停手柄输入。这是 B 角色在预览面板里动不了的修复点。
   pad.axes = [0, -1, 1, 0]; focused = false;
@@ -166,6 +163,23 @@ test('gamepad sticks/buttons affect B only and ignore keyboard arrows', () => {
   const hiddenPos = position(w.p2); G.Input.pollGamepad(1 / 60); step();
   assert.deepEqual(position(w.p2), hiddenPos, 'document.hidden=true 时应暂停手柄');
   hidden = false; focused = true;
+});
+test('single-user keyboard drives B (no gamepad required)', () => {
+  const w = reset(), a1 = position(w.p1), b1 = position(w.p2);
+  // 无手柄：方向键应能单独驱动 B 移动，且不影响 A。
+  pad = null;
+  key('ArrowUp'); step(0.25); key('ArrowUp', false);
+  assert.notDeepEqual(position(w.p2), b1, '无手柄时方向键应能驱动 B');
+  assert.deepEqual(position(w.p1), a1, '方向键不应影响 A');
+  // 键盘视角键 IJKL（pollKeyboardCamera）应能转动 B 相机，且不影响 A 相机。
+  const yawA = G.Renderer.getCameraYaw('p1'), yawB = G.Renderer.getCameraYaw('p2');
+  key('KeyJ'); G.Input.pollKeyboardCamera(0.25); key('KeyJ', false);
+  assert.notEqual(G.Renderer.getCameraYaw('p2'), yawB, 'J 键应转动 B 相机');
+  close(G.Renderer.getCameraYaw('p1'), yawA);
+  // B 的键盘功能键（句点闪光 / 左中括号切视角 / 减号同步）不再被 owner 门控吞掉。
+  const viewBefore = G.Renderer.getViewMode('p2');
+  G.Game.onPress({ code: 'BracketLeft', owner: 'p2', source: 'keyboard', t: 1 });
+  assert.notEqual(G.Renderer.getViewMode('p2'), viewBefore, 'B 的 [ 键应能切换视角');
 });
 test('controller turning is consistent at 30, 60 and 120 fps', () => {
   for (const fps of [30, 60, 120]) {

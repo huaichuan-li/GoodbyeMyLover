@@ -85,6 +85,18 @@
         G.Renderer.updateGamepadCamera('p2', look.x, look.y, dt);
       }
     },
+    // 键盘用户用 IJKL 转动 B 角色的视角（与手柄右摇杆等价）。
+    // I/J/K/L 不写入 MAP，避免触发 onPress 或占用调试键 L/K 的单次按下语义。
+    pollKeyboardCamera: function (dt) {
+      if (G.State.current !== 'PLAY' || document.hidden) return;
+      if (!G.Renderer || !G.Renderer.updateGamepadCamera) return;
+      var dx = 0, dy = 0;
+      if (Input.isDown('KeyJ')) dx -= 1;      // J 左转
+      if (Input.isDown('KeyL')) dx += 1;      // L 右转
+      if (Input.isDown('KeyI')) dy -= 1;      // I 抬头
+      if (Input.isDown('KeyK')) dy += 1;      // K 低头
+      if (dx || dy) G.Renderer.updateGamepadCamera('p2', dx, dy, dt);
+    },
     isDown: function (code) { return !!Input.down[code]; },
     ownerOf: function (code) { return MAP[code] || 'sys'; },
     drain: function () { var p = Input.presses; Input.presses = []; return p; },
@@ -111,9 +123,12 @@
           ? '键盘 WASD 移动 · 点击左屏捕获鼠标后直接移动视角 · Esc 释放 · V 切换视角 · E 观察 · F 辨认 · Shift 冲刺 · Y 是 / N 否 · Q 闪光'
           : '键盘 WASD 移动 · 拖动鼠标环视 · V 切换视角 · E 观察 · F 辨认 · Shift 冲刺 · Y 是 / N 否 · Q 闪光';
       }
-      var status = Input.gamepad ? '手柄已连接' : '等待手柄';
+      var status = Input.gamepad ? '手柄已连接' : '键盘模式（也可用手柄）';
       var firstPersonB = G.Renderer && G.Renderer.getViewMode && G.Renderer.getViewMode('p2') === 'first';
-      return status + ' · 左摇杆移动 · 右摇杆' + (firstPersonB ? '转视角' : '环视') + ' · Y 切换视角 · A 观察 · X 辨认 · B 冲刺 · 方向键上 是 / 下 否 · LT 闪光';
+      var lookKeys = firstPersonB ? '转视角' : '环视';
+      // 键盘与手柄两套键位都列出，单用户无手柄时也能对照操作。
+      return status + ' · 键盘：方向键移动 / IJKL ' + lookKeys + ' / ; 观察 / , 辨认 / . 闪光'
+        + ' · 手柄：左摇杆移动 / 右摇杆' + lookKeys + ' / A 观察 / X 辨认 / LT 闪光';
     },
     gamepadButtonLabel: function (code) { return GAMEPAD_LABELS[code] || code; },
     /* 移动向量：返回归一化前的原始方向 */
@@ -125,9 +140,17 @@
         if (Input.isDown('KeyW')) y -= 1;
         if (Input.isDown('KeyS')) y += 1;
       } else {
-        // 同上：摇杆移动不能被 hasFocus 拦截，否则 iframe/失焦时 B 角色完全不动。
+        // B 角色支持两套输入：手柄左摇杆，或纯键盘方向键（单用户无手柄时也能独立游玩）。
+        // 两者都不依赖 hasFocus，否则 iframe/失焦时 B 角色完全不动。
         var stick = !document.hidden ? Input.gamepadStick(0) : { x: 0, y: 0 };
         x = stick.x; y = stick.y;
+        // 摇杆回中/未连接手柄时，回退到方向键，让键盘用户也能操控 B。
+        if (Math.abs(x) < 0.16 && Math.abs(y) < 0.16 && !document.hidden) {
+          if (Input.isDown('ArrowLeft')) x -= 1;
+          if (Input.isDown('ArrowRight')) x += 1;
+          if (Input.isDown('ArrowUp')) y -= 1;
+          if (Input.isDown('ArrowDown')) y += 1;
+        }
       }
       var len = Math.sqrt(x * x + y * y);
       if (len > 1) { x /= len; y /= len; len = 1; }

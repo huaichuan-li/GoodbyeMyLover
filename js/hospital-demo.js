@@ -792,7 +792,8 @@
       if(ev.code==='KeyM'&&G.Audio){G.Audio.muteAll(1);return;}
       var role=ev.owner;
       var beamKey=isBeamKey(ev.code);
-      if(role==='p2'&&ev.source!=='gamepad'&&!beamKey)return;
+      // B 角色现在同时支持手柄与纯键盘：不再拦截 p2 的键盘功能键，
+      // 让单用户无手柄时也能用方向键 + 分号/逗号/句点等键完整游玩。
       if(role!=='p1'&&role!=='p2')return;
       var code=ev.code;
       // 照射判定：照方的 是/否 键。P1: KeyY 是 / KeyN 否；P2: Quote 是 / Slash 否。
@@ -819,9 +820,9 @@
         }
         return;
       }
-      if ((role==='p1'&&code==='KeyQ')||(role==='p2'&&code==='GamepadLT')) { G.Beam.flash(w,role); return; }
+      if ((role==='p1'&&code==='KeyQ')||(role==='p2'&&(code==='GamepadLT'||code==='Period'))) { G.Beam.flash(w,role); return; }
       // A 用键盘 V，B 用手柄 Y，各自只切自己的相机。
-      if((role==='p1'&&code==='KeyV')||(role==='p2'&&code==='GamepadY')){
+      if((role==='p1'&&code==='KeyV')||(role==='p2'&&(code==='GamepadY'||code==='BracketLeft'))){
         if(G.Renderer&&G.Renderer.toggleView){
           var mode=G.Renderer.toggleView(role);
           var pView=actor(w,role);
@@ -846,8 +847,8 @@
         if(G.Beam.canAct(w,role)&&p.stamina>=C.stamina.dashCost){p.stamina-=C.stamina.dashCost;p.dashT=.3;}
       }
       // ========== P1-2: 紧急同步（双方同时按则共享最有价值信息） ==========
-      // A：R 键；B：手柄 LB（保留小键盘 . 作为兼容入口）
-      if((role==='p1'&&code==='KeyR')||(role==='p2'&&(code==='NumpadDecimal'||code==='GamepadLB'))){
+      // A：R 键；B：手柄 LB 或键盘 - 键（Minus）
+      if((role==='p1'&&code==='KeyR')||(role==='p2'&&(code==='Minus'||code==='GamepadLB'))){
         emergencySync(w,role);
       }
     },
@@ -890,21 +891,24 @@
         +'穿过小地图标红的危险区 → 观察心率和共享血条 → 在三米内完成相认 → 根据小地图出口标记逃离。</p>'
         +'<div class="keys">'
         +'<div><b>A 玩家（键盘+鼠标）</b>：WASD 移动　·　第一人称点击左屏捕获鼠标后直接移动转视角（Esc 释放）　·　第三人称拖动鼠标环视　·　V 切换视角　·　E 观察　·　F 辨认　·　Shift 冲刺　·　R 同步　·　Y 是 / N 否（照到对方时）　·　Q 闪光（闪光灯卡）</div>'
-        +'<div><b>B 玩家（外置手柄）</b>：左摇杆移动　·　右摇杆转视角　·　Y 第一/第三人称　·　A 观察　·　X 辨认　·　B 冲刺　·　LB 同步　·　RB 放弃　·　方向键上 是 / 下 否　·　LT 闪光（闪光灯卡）</div>'
+        +'<div><b>B 玩家（键盘 / 手柄均可，一个人也能玩）</b>：<br>'
+        +'　键盘：方向键 ↑↓←→ 移动　·　I/J/K/L 转视角　·　[ 切换视角　·　; 观察　·　, 辨认　·　右 Shift 冲刺　·　- 同步　·　] 放弃　·　引号键 是 / 斜杠键 否（照到对方时）　·　句号键 闪光<br>'
+        +'　手柄：左摇杆移动　·　右摇杆转视角　·　Y 第一/第三人称　·　A 观察　·　X 辨认　·　B 冲刺　·　LB 同步　·　RB 放弃　·　方向键上 是 / 下 否　·　LT 闪光</div>'
+        +'<div class="solo-hint" style="margin-top:6px;opacity:.85;">💡 只有一台电脑、一个人也能玩：左手 WASD 控制 A，右手方向键控制 B，两个角色都由你操控即可完成相认与逃生。多人各玩各的也完全没问题——每台电脑各自打开链接即可，互不干扰。</div>'
         +'</div>'
         +'<div class="tips">'
         +'<h3>核心玩法</h3>'
         +'<ul>'
         +'<li><b>线索</b>：每个科室抽屉里都有线索，捡到后 HUD 会帮你筛选 NPC</li>'
-        +'<li><b>观察</b>：靠近 NPC 按 E / 手柄 A——先<em>站着不动 2 秒</em>让自己"隐身"，再观察成功率 100%；直接冲上去观察，成功率 40% 还会被发现</li>'
-        +'<li><b>辨认</b>：按 F / 手柄 X 提交——完全匹配反而是错的（NPC 不会有你所有线索），认错扣血+生成镜像怪</li>'
+        +'<li><b>观察</b>：靠近 NPC 按 E（B 用 ; 或手柄 A）——先<em>站着不动 2 秒</em>让自己"隐身"，再观察成功率 100%；直接冲上去观察，成功率 40% 还会被发现</li>'
+        +'<li><b>辨认</b>：按 F（B 用 , 或手柄 X）提交——完全匹配反而是错的（NPC 不会有你所有线索），认错扣血+生成镜像怪</li>'
         +'<li><b>NPC 会反应</b>：被你看太多次的 NPC 会跑；你们俩人凑到一起，整层 NPC 都不动</li>'
         +'<li><b>手电照人</b>：手电筒照住对方时，对方不能动、不能操作；照方按 是/否 判定对方身份，判定后立即解除；照方松开光束超过 1.5 秒也会自动解除</li>'
-        +'<li><b>视角</b>：A 第一人称点击左屏后直接移动鼠标转视角，第三人称拖动鼠标环绕；B 使用手柄右摇杆；V / Y 切换视角</li>'
+        +'<li><b>视角</b>：A 第一人称点击左屏后直接移动鼠标转视角，第三人称拖动鼠标环绕；B 用 I/J/K/L 键或手柄右摇杆；V / [ 切换视角</li>'
         +'<li><b>危险区</b>：这一层有三个固定污染区，停留超过两秒会持续扣共享血量，视野逐渐模糊；离开后会慢慢恢复。小地图红色区域就是危险区。</li>'
         +'<li><b>心率与救援</b>：十米内心率会加快，只显示等级和声音；共享血量归零后对应玩家倒地，另一名玩家靠近长按 F / 手柄 X 两秒即可救援。</li>'
-        +'<li><b>相认与逃生</b>：两人距离三米内，A 按 F、B 按手柄 X；一人发起后，另一人按同一个辨认键回应，10 秒内完成相认。成功后感染者出现，两人一起到出口胜利。</li>'
-        +'<li><b>紧急同步</b>：A 按 R，B 按手柄 LB，3 秒内响应即可自动联动通知会合</li>'
+        +'<li><b>相认与逃生</b>：两人距离三米内，A 按 F、B 按 , 或手柄 X；一人发起后，另一人按同一个辨认键回应，10 秒内完成相认。成功后感染者出现，两人一起到出口胜利。</li>'
+        +'<li><b>紧急同步</b>：A 按 R，B 按 - 键或手柄 LB，3 秒内响应即可自动联动通知会合</li>'
         +'</ul>'
         +'</div>'
         +'<button type="button" id="start-duo" class="start-button">开始游戏（按 2 / 手柄 A）</button>'

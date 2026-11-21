@@ -55,6 +55,7 @@
       Loop.acc += dt;
       // 浏览器手柄没有可靠的按键事件，逐帧采样并把按钮边沿转成统一输入事件。
       if (G.Input.pollGamepad) G.Input.pollGamepad(dt);
+      if (G.Input.pollKeyboardCamera) G.Input.pollKeyboardCamera(dt);
       var presses = G.Input.drain();
       for (var i = 0; i < presses.length; i++) G.Game.onPress(presses[i]);
       while (Loop.acc >= C.step) {
