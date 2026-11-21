@@ -37,6 +37,10 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
   // 人物高度：按需求在上一版 1.6m 基础上再减半 → 0.8m。
   // 第三人称下人物在画面里只占约原来一半，走廊与场景更完整可见。
   var MUMMY_HEIGHT = 0.8;
+  // 眼高统一常量：第一人称相机 / 手电 / 遮挡射线 / 第三人称取景基准都对齐到人物头部高度。
+  // 旧值 1.58 / 1.45 是人物 1.6m 时代的眼高，人物缩到 0.8m 后视角明显偏高。
+  // 0.76m ≈ 人物头顶(0.8m)稍下，正好与现在的头部齐平。
+  var EYE_HEIGHT = 0.76;
   var mats = {};
   function mat(name, color, roughness) {
     if (!mats[name]) mats[name] = new THREE.MeshStandardMaterial({ color: color, roughness: roughness || 0.85 });
@@ -460,13 +464,13 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
   function canSee(w, player, entity) {
     if (!w || !player || !entity || player.floor !== entity.floor) return false;
     var floor = player.floor, base = (floor - 1) * 4.2;
-    var start = { x: player.x / 100, y: base + 1.45, z: player.y / 100 - 4.9 };
+    var start = { x: player.x / 100, y: base + EYE_HEIGHT, z: player.y / 100 - 4.9 };
     var end = { x: entity.x / 100, y: base + (entity.kind === 'player' ? 1.0 : 0.85), z: entity.y / 100 - 4.9 };
     return firstWallHit(w, floor, start, end, 0.015) >= 0.995;
   }
   function cameraTarget(player, base, role, height) {
     var v = viewState(role), f = forwardFor(role);
-    var target = new THREE.Vector3(player.x / 100, base + (height || 1.58), player.y / 100 - 4.9);
+    var target = new THREE.Vector3(player.x / 100, base + (height || EYE_HEIGHT), player.y / 100 - 4.9);
     var pitch = v.pitch;
     if (v.mode === 'first') {
       var lookDistance = 6;
@@ -568,19 +572,19 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
     var player = role === 'p1' ? w.p1 : w.p2;
     var base = (player.floor - 1) * 4.2;
     var state = viewState(role);
-    var playerTarget = new THREE.Vector3(player.x / 100, base + 1.58, player.y / 100 - 4.9);
-    var target = cameraTarget(player, base, role, 1.58);
+    var playerTarget = new THREE.Vector3(player.x / 100, base + EYE_HEIGHT, player.y / 100 - 4.9);
+    var target = cameraTarget(player, base, role, EYE_HEIGHT);
     var camera = cameras[role];
     camera.aspect = width / window.innerHeight;
     camera.updateProjectionMatrix();
     var f = forwardFor(role);
     if (state.mode === 'first') {
-      camera.position.set(playerTarget.x, base + 1.58, playerTarget.z);
+      camera.position.set(playerTarget.x, base + EYE_HEIGHT, playerTarget.z);
     } else {
       var horizontal = Math.cos(state.pitch) * state.distance;
       var desired = {
         x: playerTarget.x - f.x * horizontal + Math.cos(state.yaw) * 0.5,
-        y: clamp(base + 1.58 + Math.sin(state.pitch) * state.distance, base + 0.35, base + 3.22),
+        y: clamp(base + EYE_HEIGHT + Math.sin(state.pitch) * state.distance, base + 0.25, base + 3.22),
         z: playerTarget.z - f.z * horizontal + Math.sin(state.yaw) * 0.5
       };
       var safe = cameraBeforeWall(w, player.floor, playerTarget, desired);
@@ -598,8 +602,8 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
         beam.distance = (player.beam && player.beam.range || 1200) / 100;
         beam.angle = player.beam && player.beam.halfAngle || Math.PI / 7;
         // 光源留在人物眼前，不随第三人称镜头退到墙角或照向自己。
-        beam.position.set(playerTarget.x, base + 1.58, playerTarget.z);
-        beam.target.position.set(playerTarget.x + f.x * 6 * Math.cos(state.pitch), base + 1.58 - Math.sin(state.pitch) * 6, playerTarget.z + f.z * 6 * Math.cos(state.pitch));
+        beam.position.set(playerTarget.x, base + EYE_HEIGHT, playerTarget.z);
+        beam.target.position.set(playerTarget.x + f.x * 6 * Math.cos(state.pitch), base + EYE_HEIGHT - Math.sin(state.pitch) * 6, playerTarget.z + f.z * 6 * Math.cos(state.pitch));
       }
     });
 

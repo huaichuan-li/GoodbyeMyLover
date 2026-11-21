@@ -220,13 +220,31 @@ test('each screen uses its own eye-mounted flashlight; rebuild keeps a single fl
     const role = index ? 'p2' : 'p1', p = G.Game.world[role];
     assert.equal(frame.lights.length, 1); assert.equal(frame.lights[0].name, 'flashlight-' + role);
     close(frame.lights[0].position.x, p.x / 100);
-    close(frame.lights[0].position.y, (p.floor - 1) * 4.2 + 1.58);
+    // 眼高已从人物 1.6m 时代的 1.58 下移到与 0.8m 人物头部齐平的 0.76。
+    close(frame.lights[0].position.y, (p.floor - 1) * 4.2 + 0.76);
   });
   for (let i = 0; i < 3; i++) { reset(); G.Renderer.renderAll(); }
   const floorGroups = frames[0].scene.children.filter(x => /^hospital-floor-/.test(x.name));
   assert.equal(floorGroups.length, 1, 'only one hospital floor group should exist');
   assert.equal(floorGroups[0].name, 'hospital-floor-1');
   assert.equal(frames[0].scene.children.filter(x => x.name === 'stairwell-core').length, 0);
+});
+test('第一人称相机眼高与 0.8m 人物头部齐平（0.76m），不再用旧 1.58', () => {
+  reset();
+  G.Game.onPress({ code: 'KeyV', owner: 'p1' }); // p1 切到第一人称
+  assert.equal(G.Renderer.getViewMode('p1'), 'first');
+  G.Renderer.renderAll();
+  const frame = frames[0];
+  const p = G.Game.world.p1;
+  // 第一人称相机必须落在玩家眼部高度 ≈ 0.76m（人物总高 0.8m 的头顶稍下）。
+  close(frame.camera.position.y, (p.floor - 1) * 4.2 + 0.76);
+  assert.ok(frame.camera.position.y < (p.floor - 1) * 4.2 + 1.0,
+    '第一人称眼高不应回到 1.58m 的旧高度');
+  // 手电也应从同一眼高发出。
+  close(frame.lights[0].position.y, (p.floor - 1) * 4.2 + 0.76);
+  // p2 仍为第三人称，其取景基准同样降到 0.76 附近（越低越贴人物）。
+  const p2 = G.Game.world.p2;
+  close(frames[1].lights[0].position.y, (p2.floor - 1) * 4.2 + 0.76);
 });
 test('loaded props retain normalized centers when placed in the hospital', () => {
   const bed = pendingAssets.find(x => x.url.endsWith('prop_hospital_bed.glb'));
