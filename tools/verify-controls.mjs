@@ -165,15 +165,19 @@ test('controller turning is consistent at 30, 60 and 120 fps', () => {
   }
 });
 test('walking stops at walls and passes through the actual doorway', () => {
-  const w = reset(); Object.assign(w.p1, { floor: 1, x: 400, y: 490 });
+  // 新 GLB 布局：中央走廊 y∈[442,554] 畅通；北走廊墙 y=400(膨胀到416)，
+  // 门洞中心 x=450/712/974/1236/1498，净通行 x∈[431,469] 等。
+  const w = reset(); Object.assign(w.p1, { floor: 1, x: 350, y: 490 });
   key('KeyW'); step(2); key('KeyW', false);
-  assert.ok(w.p1.y >= 414, 'north room wall must block A');
-  Object.assign(w.p1, { x: 485, y: 490 }); key('KeyW'); step(2); key('KeyW', false);
-  assert.ok(w.p1.y < 300, 'door opening must allow passage');
+  assert.ok(w.p1.y >= 414, 'north room wall (solid segment) must block A');
+  Object.assign(w.p1, { x: 450, y: 490 }); key('KeyW'); step(2); key('KeyW', false);
+  assert.ok(w.p1.y < 300, 'door opening at x=450 must allow passage');
 });
 test('TPS camera and near plane stay outside walls at corners on the single floor', () => {
   const w = reset();
-  for (const floor of [1]) for (const point of [[400, 580], [400, 420], [620, 420], [485, 490], [70, 70], [2335, 915]]) {
+  // 新 GLB 布局的开阔采样点：走廊中心(x=450/974/1498, y=490)、北/南房间中心、
+  // 以及地图角落。避免把玩家放在新墙体内导致相机从墙内出发。
+  for (const floor of [1]) for (const point of [[450, 490], [974, 490], [1498, 490], [450, 300], [450, 680], [70, 70], [2335, 915]]) {
     Object.assign(w.p1, { floor, x: point[0], y: point[1] });
     for (const pitch of [-1, 0, 1]) for (let turn = 0; turn < 24; turn++) {
       G.Renderer.resetViews();
@@ -196,18 +200,19 @@ test('TPS camera and near plane stay outside walls at corners on the single floo
   }
 });
 test('walls block both entity rendering and interaction', () => {
-  const w = reset(); Object.assign(w.p1, { floor: 1, x: 400, y: 420 });
+  // 新 GLB 布局：走廊北墙 y=400，墙段（非门洞）挡视线；门洞 x=450 处可透视。
+  const w = reset(); Object.assign(w.p1, { floor: 1, x: 350, y: 490 });
   const npcs = w.entities.filter(e => e.kind === 'npc');
   const npc = npcs[0];
   // 单层后所有 NPC 都在 1F；隔离出唯一目标，避免其它随机 NPC 干扰辨认/伤害判定。
   npcs.slice(1).forEach(e => { e.alive = false; });
   Object.assign(w.p2, { x: 1885, y: 490 }); // 拉开距离，避免触发双向相认
-  Object.assign(npc, { floor: 1, x: 400, y: 350, state: 'still' });
-  assert.equal(G.Renderer.canSee(w, w.p1, npc), false);
+  Object.assign(npc, { floor: 1, x: 350, y: 360, state: 'still' });
+  assert.equal(G.Renderer.canSee(w, w.p1, npc), false, 'solid corridor wall must block sight');
   G.Renderer.renderAll(); assert.ok(!frames[0].visible.includes('entity-' + npc.id));
   const hp = w.p1.hp; G.Hospital.interact(w, 'p1', true); assert.equal(w.p1.hp, hp);
-  Object.assign(w.p1, { x: 485 }); Object.assign(npc, { x: 485 });
-  assert.equal(G.Renderer.canSee(w, w.p1, npc), true);
+  Object.assign(w.p1, { x: 450 }); Object.assign(npc, { x: 450 });
+  assert.equal(G.Renderer.canSee(w, w.p1, npc), true, 'doorway at x=450 must allow sight');
 });
 test('each screen uses its own eye-mounted flashlight; rebuild keeps a single floor', () => {
   reset(); G.Renderer.renderAll();
@@ -507,6 +512,32 @@ test('单层世界：楼层表只含 1F，所有实体/墙/科室都在 1F，无
   assert.ok(w.walls.every(b => b.floor === 1), '所有墙应在 1F');
   assert.ok(!w.entities.some(e => e.kind === 'stairs'), '不应存在楼梯实体');
   assert.ok(!w.walls.some(b => /stair/i.test(b.kind || '')), '不应存在楼梯墙');
+});
+
+// ========== 新 GLB 场景碰撞一致性：视觉空地必须真能走 ==========
+test('碰撞墙与新 GLB 场景对齐：中央走廊全程畅通、无横墙误挡', () => {
+  const w = reset();
+  // 复现游戏 blocked() 的判定（每边膨胀 26px），验证视觉上的空地确实可走。
+  const hit = (x, y) => w.walls.some(b =>
+    b.floor === 1 && x > b.x - 26 && x < b.x + b.w + 26 && y > b.y - 26 && y < b.y + b.h + 26);
+  // 1) 中央走廊 y=490：沿 X 从 100 到 1900 全程不得被任何墙挡住（旧布局横穿的竖墙必须清除）。
+  for (let x = 100; x <= 1900; x += 20) {
+    assert.ok(!hit(x, 490), `中央走廊 (${x},490) 不应有隐形墙`);
+  }
+  // 2) 走廊带宽：y∈[450,540] 的任何点都应畅通（走廊内部无横墙）。
+  for (let x = 100; x <= 1900; x += 40) for (let y = 450; y <= 540; y += 15) {
+    assert.ok(!hit(x, y), `走廊内部 (${x},${y}) 不应有墙`);
+  }
+  // 3) 房间隔墙仍在正确位置（x≈318/580/842/1104/1366/1628 的墙段真实存在）。
+  [318, 580, 842, 1104, 1366, 1628].forEach(cx => {
+    assert.ok(hit(cx, 300), `北侧隔墙 x=${cx} 应存在`);
+    assert.ok(hit(cx, 680), `南侧隔墙 x=${cx} 应存在`);
+  });
+  // 4) 门洞中心可进出房间：门洞 x∈{450,712,974,1236,1498} 在走廊墙上无墙。
+  [450, 712, 974, 1236, 1498].forEach(cx => {
+    assert.ok(!hit(cx, 400), `北门洞 x=${cx} 应畅通`);
+    assert.ok(!hit(cx, 580), `南门洞 x=${cx} 应畅通`);
+  });
 });
 
 // ========== 医院场景 GLB 断言 ==========

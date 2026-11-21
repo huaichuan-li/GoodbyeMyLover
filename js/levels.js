@@ -5,17 +5,38 @@
   var departments={1:['挂号大厅','药房','急诊分诊','一楼候诊']};
   function add(w,o){G.World.add(w,G.Entities.make(o));}
   function wall(w,f,x,y,width,height,kind){w.walls.push({x:x,y:y,w:width,h:height,floor:f,kind:kind||'partition'});}
+  // 碰撞墙必须与新 GLB 场景（hospital_1f.glb）的真实墙体对齐，否则会出现
+  // “看着是空地却走不过去”的隐形墙。以下坐标从 GLB 结构件的世界包围盒换算到
+  // 逻辑坐标系（world X*100，world Z→逻辑 y = (Z+4.9)*100，缩放 s≈0.7486）。
+  //
+  // 新场景真实布局（逻辑坐标）：
+  //   · 中央走廊沿 X 轴横贯，y∈[408,572]，**全程畅通、无任何横墙**；
+  //   · 北侧房间 y∈[217,392]，南侧房间 y∈[580,763]；
+  //   · 房间隔墙（垂直）位于 x≈318/580/842/1104/1366/1628，间距≈262；
+  //   · 每个房间朝走廊开一扇门（门洞宽≈90），门中心 x≈450/712/974/1236/1498。
+  var PART_X = [318, 580, 842, 1104, 1366, 1628];        // 房间隔墙中心
+  var DOOR_X = [450, 712, 974, 1236, 1498];              // 房间门洞中心
+  var CORRIDOR_N = 400, CORRIDOR_S = 580;                 // 走廊南北门线 y
+  var ROOM_N_TOP = 217, ROOM_N_BOT = 392, ROOM_S_TOP = 580, ROOM_S_BOT = 763;
+
   function addDoorFrames(w,f){
-    var cells=[310,660,1010,1360,1710];
-    cells.forEach(function(x,i){
-      var center=x+175;
-      [125,610].forEach(function(y){wall(w,f,x,y,18,185,'partition');wall(w,f,x,y+285,18,245,'partition');});
-      [370,610].forEach(function(y){
-        var left=Math.max(x,36),right=Math.min(x+350,2364),gap=120;
-        wall(w,f,left,y,center-gap/2-left,18,'partition');
-        wall(w,f,center+gap/2,y,right-(center+gap/2),18,'partition');
+    // 房间之间的垂直隔墙（北排 + 南排）：薄墙 y 方向延伸，x 为墙厚。
+    PART_X.forEach(function(cx){
+      wall(w,f,cx-7,ROOM_N_TOP,14,ROOM_N_BOT-ROOM_N_TOP,'partition'); // 北侧隔墙
+      wall(w,f,cx-7,ROOM_S_TOP,14,ROOM_S_BOT-ROOM_S_TOP,'partition'); // 南侧隔墙
+    });
+    // 走廊两侧的连续墙，按门洞切成墙段：门洞处留空，让玩家可进出房间。
+    // 门洞宽 90（DOOR_X±45），两端到地图边界的部分补成墙。
+    var GAP = 90;
+    [CORRIDOR_N, CORRIDOR_S].forEach(function(y){
+      var edges = DOOR_X.map(function(cx){return [cx-GAP/2, cx+GAP/2];});
+      var cursor = 36;
+      edges.forEach(function(e){
+        if (e[0] > cursor) wall(w,f,cursor,y,e[0]-cursor,16,'partition');
+        cursor = e[1];
       });
-      w.doors.push({floor:f,x:center,y:370},{floor:f,x:center,y:610});
+      if (cursor < 1930) wall(w,f,cursor,y,1930-cursor,16,'partition');
+      DOOR_X.forEach(function(cx){w.doors.push({floor:f,x:cx,y:y});});
     });
   }
   G.Level={departments:departments,build:function(w){

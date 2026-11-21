@@ -10,6 +10,9 @@ assets/animated/previews/
 assets/animated/source/
 assets/hospital_1f.blend
 
+# AI 生成海报/图片产物不入库（仅本地展示）
+generated-images/
+
 # 临时调试脚本与外部工具产物不入库
 tools/_*.mjs
 tools/mira_scene_colab.ipynb
