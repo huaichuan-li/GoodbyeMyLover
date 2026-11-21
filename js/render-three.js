@@ -662,16 +662,18 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
     renderer.clear(true, true, true);
     if (!w) return;
     // 调试明亮模式只提高环境照明与曝光，保留墙体碰撞、遮挡和手电逻辑。
-    // 普通模式维持停电医院的低环境光，避免改变正式玩法。
+    // 普通模式维持停电医院的低环境光：手电是主要照明，不开手电只能看到近处轮廓。
     var bright=!!w.brightMode;
-    // 普通模式保留停电基调，但环境光抬到能看清 GLB 场景的建模细节；
-    // 手电仍是主要局部照明，L 键明亮模式供验收/试玩看全貌。
-    if(hemisphereLight)hemisphereLight.intensity=bright?1.15:0.5;
-    if(keyLight)keyLight.intensity=bright?0.72:0.42;
-    if(corridorLight)corridorLight.intensity=bright?0.9:0.85;
-    renderer.toneMappingExposure=bright?1.15:1.05;
-    if(scene.background)scene.background.setHex(bright?0x4b565d:0x111a21);
-    if(scene.fog)scene.fog.color.setHex(bright?0x4b565d:0x111a21);
+    // 之前普通模式的环境光被抬到 0.5/0.42/0.85 + 曝光 1.05，导致不开手电也
+    // 能看清整条走廊，手电光斑失去意义。这里恢复到停电级别（接近 init 的
+    // 半球光 0.12 / 主光 0.04），仅保留极弱的走廊冷光做纵深氛围；需要看全貌
+    // 时用 debug 的 L 键明亮模式。
+    if(hemisphereLight)hemisphereLight.intensity=bright?1.15:0.14;
+    if(keyLight)keyLight.intensity=bright?0.72:0.06;
+    if(corridorLight)corridorLight.intensity=bright?0.9:0.16;
+    renderer.toneMappingExposure=bright?1.15:0.82;
+    if(scene.background)scene.background.setHex(bright?0x4b565d:0x0a1016);
+    if(scene.fog)scene.fog.color.setHex(bright?0x4b565d:0x0a1016);
     var duo = G.Game.mode === 'duo' || G.Game.dualView;
     if (duo) {
       view(w, 0, window.innerWidth / 2, 'p1');
