@@ -522,8 +522,10 @@ test('医院场景 GLB：结构件完整显示、射线禁用，程序化墙隐�
   sceneAsset.callback({ scene: src });
   assert.equal(wallMesh.visible, true, 'WALL_ 结构件应完整显示（最新建模场景为画面主体）');
   assert.equal(wallMesh.material.side, Three.DoubleSide, '墙/门框应从走廊内部双面可见，避免背面剔除成空洞');
-  assert.equal(typeof wallMesh.raycast, 'function');
-  assert.doesNotThrow(() => wallMesh.raycast(), '场景 mesh 射线应为禁用空函数');
+  // 结构大面保留 raycast，供第三人称相机避障（否则相机穿进墙出现黑色遮挡板）
+  assert.equal(wallMesh.raycast, Three.Mesh.prototype.raycast, 'WALL_ 结构件应保留原生 raycast 供相机避障');
+  // 装饰件应禁用 raycast 控制性能
+  assert.equal(decor.raycast.toString().indexOf('ray') < 0, true, '装饰件射线应为禁用空函数');
   assert.equal(decor.visible, true, '装饰件应可见');
   G.Renderer.renderAll();
   const floorGroup = frames[0].scene.getObjectByName('hospital-floor-1');
@@ -539,6 +541,40 @@ test('医院场景 GLB：结构件完整显示、射线禁用，程序化墙隐�
   assert.ok(procWalls.every(x => x.visible === false), 'GLB 到位后程序化墙网格应隐藏，避免与新场景重叠');
   const shell = floorGroup.children.filter(x => /^(north-wall|south-wall|west-wall|east-wall|ceiling-(trim|light)-)/.test(x.name));
   assert.ok(shell.length > 0 && shell.every(x => x.visible === false), 'GLB 到位后程序化边界墙/天花应隐藏');
+});
+
+test('医院 GLB 地板顶面必须落在世界 y=0（不被地下几何抬高），且地板 slab 基准记录正确', () => {
+  const sceneAsset = pendingAssets.find(x => x.url.endsWith('hospital_1f.glb'));
+  const src = new Three.Group();
+  // 模拟真实资产：地板顶面在局部 y=0，另有一块地下室几何延伸到 y=-3.4（会把整体 bbox min 拉低）
+  const floorSlab = new Three.Mesh(new Three.BoxGeometry(26, 0.4, 10), new Three.MeshBasicMaterial());
+  floorSlab.name = 'WALL_FLOOR_slab'; floorSlab.position.set(12, -0.2, 0); // 顶面 y=0
+  const basement = new Three.Mesh(new Three.BoxGeometry(4, 3, 4), new Three.MeshBasicMaterial());
+  basement.name = 'basement'; basement.position.set(2, -2, 0); // 局部最低 y=-3.5
+  src.add(floorSlab, basement);
+  sceneAsset.callback({ scene: src });
+  G.Renderer.renderAll();
+  const floorGroup = frames[0].scene.getObjectByName('hospital-floor-1');
+  const glbInstance = floorGroup.children.find(x => x.userData && x.userData.sourceBounds);
+  assert.ok(glbInstance, '医院 GLB 应挂到 1F');
+  // 关键断言：归一化基准是地板顶面而非整体 bbox min
+  assert.ok(Math.abs(glbInstance.userData.floorTopLocalY - 0) < 1e-6,
+    '应以地板 slab 顶面(局部 y=0)为对齐基准，而非整体 bbox min(-3.5)');
+  // anchor.position.y = -floorTopLocalY * s = 0 → 地板顶面落在世界 y=0
+  const anchor = glbInstance.children[0];
+  assert.ok(Math.abs(anchor.position.y) < 1e-6, '地板顶面应落在世界 y=0，不能把整栋楼抬高');
+});
+
+test('角色与物体不再带 __outline__ 发光描边方块，也不再有荧光 glow 网格', () => {
+  const w = reset();
+  G.Renderer.renderAll();
+  let outlineCount = 0, glowCount = 0;
+  frames[0].scene.traverse(obj => {
+    if (obj.name === '__outline__') outlineCount++;
+    if (/__glow|clue-glow|phone-glow|exit-glow/.test(obj.name)) glowCount++;
+  });
+  assert.equal(outlineCount, 0, '不应存在 __outline__ 发光描边方块（会包裹角色）');
+  assert.equal(glowCount, 0, '不应存在荧光发光层网格');
 });
 
 // ========== 动画木乃伊 GLB 断言 ==========

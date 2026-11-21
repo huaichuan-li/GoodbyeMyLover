@@ -161,9 +161,12 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
         if (o.isMesh) {
           // 外部 GLB 的墙/门框从走廊内部观察常是背面，需双面渲染否则被剔除成空洞。
           if (o.material) { o.material.side = THREE.DoubleSide; o.material.needsUpdate = true; }
-          // 碰撞 / 遮挡 / 镜头避障 / 手电判定仍由逻辑真源 w.walls 决定，与视觉网格解耦。
+          // 碰撞 / 遮挡 / 手电判定仍由逻辑真源 w.walls 决定，与视觉网格解耦。
           o.castShadow = false; o.receiveShadow = true;
-          o.raycast = function () {}; // 700+ 装饰 mesh 不参与相机射线，避免性能开销与遮挡错位
+          // 第三人称相机避障需要"看见"实体墙：结构大面（WALL_ 前缀：墙/地板/天花/隔墙）
+          // 保留 raycast，否则相机会穿进精细模型出现黑色遮挡板。其余 600+ 家具/装饰禁用
+          // raycast 以控制性能（它们不参与相机射线，遮挡仍由 w.walls 逻辑判定）。
+          if (!/^WALL_/.test(o.name)) o.raycast = function () {};
         }
       });
       // 归一化到逻辑足迹 X∈[0,24]、Z∈[-4.9,4.9]、底面 y=0，锚点 (12,0,0)
@@ -173,13 +176,27 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
       var center = bounds.getCenter(new THREE.Vector3());
       var sx = 24 / (size.x || 1), sz = 10 / (size.z || 1);
       var s = Math.min(sx, sz);
+      // 关键：不能用整体 bounds.min.y 对齐地面——本模型含地下室/地基几何（局部 y≈-3.38），
+      // 会把整栋楼抬高 2.5m，导致相机走在地板下方看不到墙。改用地板 slab 的顶面（可行走面）
+      // 作为 y=0 基准：WALL_FLOOR_slab 顶面局部 y≈0，对齐后墙/家具正好落在游戏逻辑地面。
+      var floorTopLocalY = bounds.min.y; // 兜底：找不到地板时退回整体底
+      var floorSlab = model.getObjectByName('WALL_FLOOR_slab');
+      if (!floorSlab) {
+        // 退而求其次：按名字模糊找任何 FLOOR 结构件
+        model.traverse(function (o) { if (!floorSlab && o.isMesh && /FLOOR/i.test(o.name)) floorSlab = o; });
+      }
+      if (floorSlab) {
+        var fb = new THREE.Box3().setFromObject(floorSlab);
+        floorTopLocalY = fb.max.y; // 地板 slab 顶面 = 可行走的地面高度
+      }
       var normalized = new THREE.Group();
       var anchor = new THREE.Group();
       anchor.add(model);
       anchor.scale.setScalar(s);
-      anchor.position.set(12 - center.x * s, -bounds.min.y * s, 0 - center.z * s);
+      anchor.position.set(12 - center.x * s, -floorTopLocalY * s, 0 - center.z * s);
       normalized.add(anchor);
       normalized.userData.sourceBounds = { x: size.x, y: size.y, z: size.z };
+      normalized.userData.floorTopLocalY = floorTopLocalY;
       sceneGLB = normalized;
       if (builtWorld) buildWorld(builtWorld);
       loadDone();
@@ -257,8 +274,8 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
     box(group, 'corridor-sign2', [18, base + 2.8, -5.3], [1.4, 0.25, 0.05], mat('corridor-sign2', 0x5a6770));
     box(group, 'fire-extinguisher-1', [1, base + 0.9, 3], [0.2, 0.6, 0.2], mat('extinguisher', 0xb4453c));
     box(group, 'fire-extinguisher-2', [23, base + 0.9, -3], [0.2, 0.6, 0.2], mat('extinguisher2', 0xb4453c));
-    box(group, 'exit-sign-1', [3, base + 3.0, 5.3], [0.6, 0.2, 0.02], mat('exit', 0x3ddc84));
-    box(group, 'exit-sign-2', [22, base + 3.0, -5.3], [0.6, 0.2, 0.02], mat('exit2', 0x3ddc84));
+    box(group, 'exit-sign-1', [3, base + 3.0, 5.3], [0.6, 0.2, 0.02], mat('exit', 0x4a6a58));
+    box(group, 'exit-sign-2', [22, base + 3.0, -5.3], [0.6, 0.2, 0.02], mat('exit2', 0x4a6a58));
     var warnMat = mat('warning', 0xc8a15a, 0.6);
     box(group, 'warn-line-1', [11.9, base - 0.21, 3.5], [3.5, 0.01, 0.08], warnMat);
     box(group, 'warn-line-2', [11.9, base - 0.21, -3.5], [3.5, 0.01, 0.08], warnMat);
@@ -359,8 +376,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
       } else {
         box(group, 'phone-fallback', [0, 0.9, 0], [0.24, 0.1, 0.14], mat('phone-fallback', 0x5ab3bb));
       }
-      // 发光效果
-      box(group, 'phone-glow', [0, 0.9, 0], [0.26, 0.02, 0.16], mat('phone-screen', 0xc8a15a));
+      // 荧光发光层已移除，保留手机模型本体
     } else if (e.kind === 'food' || e.kind === 'medicine') {
       var foodModel = assetInstance('food');
       if (foodModel) {
@@ -370,47 +386,18 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
         box(group, 'food-fallback', [0, 0.22, 0], [0.14, 0.28, 0.14], mat('food-fallback', e.kind==='medicine'?0xc95d55:0x99b977));
       }
     } else if (e.kind === 'clue') {
-      // 线索卡：有发光边框
+      // 线索卡：去掉荧光发光层，只保留纸本体
       box(group, 'clue-paper', [0, 0.85, 0], [0.32, 0.02, 0.24], mat('clue-paper', 0xc6a258));
-      box(group, 'clue-glow', [0, 0.86, 0], [0.36, 0.01, 0.28], mat('clue-glow', 0xffd68a));
-      box(group, 'clue-edge-1', [0, 0.865, -0.14], [0.34, 0.01, 0.01], mat('clue-edge', 0xc8a15a));
-      box(group, 'clue-edge-2', [0, 0.865, 0.14], [0.34, 0.01, 0.01], mat('clue-edge2', 0xc8a15a));
     } else if (e.kind === 'exit') {
-      box(group,'exit-frame',[0,1.1,0],[1.2,2.2,.18],mat('exit-frame',0x3ddc84));
-      box(group,'exit-glow',[0,2.1,0],[.75,.18,.04],mat('exit-glow',0x9effba));
+      // 出口：去掉荧光描边，改为低调的门框
+      box(group,'exit-frame',[0,1.1,0],[1.2,2.2,.18],mat('exit-frame',0x4a5a52));
     } else if (e.kind === 'food' || e.kind === 'battery') {
       // 通用拾取物 fallback
       box(group, 'pickup', [0, 0.22, 0], [0.16, 0.2, 0.16], mat('pickup-fallback', 0x99b977));
     }
-    // P0: 预挂边缘高亮 outline mesh（薄壳，不是大方块）
-    // 外壳按物体实际包围盒生成：每个方向向外多出物体该方向尺寸的 1/10
-    var OUTLINE_RATIO = 0.1, OUTLINE_MIN = 0.01;
-    var bsize = new THREE.Vector3(), bcenter = new THREE.Vector3();
-    var isActor = (e.kind === 'player' || e.kind === 'npc' || e.kind === 'zombie');
-    if (isActor && mummySource) {
-      // 骨骼动画中 Box3 会随姿态抖动，角色用固定代理盒
-      bsize.set(0.85, 1.9, 0.85); bcenter.set(0, 0.95, 0);
-    } else {
-      group.updateMatrixWorld(true);
-      var bbox = new THREE.Box3().setFromObject(group);
-      if (bbox.isEmpty()) { bsize.set(1, 1.8, 1); bcenter.set(0, 0.9, 0); }
-      else { bbox.getSize(bsize); bcenter = bbox.getCenter(bcenter); }
-    }
-    var outlineGeo = new THREE.BoxGeometry(
-      bsize.x + 2 * Math.max(bsize.x * OUTLINE_RATIO, OUTLINE_MIN),
-      bsize.y + 2 * Math.max(bsize.y * OUTLINE_RATIO, OUTLINE_MIN),
-      bsize.z + 2 * Math.max(bsize.z * OUTLINE_RATIO, OUTLINE_MIN)
-    );
-    var outlineMat = new THREE.MeshBasicMaterial({
-      color: 0xffe08a, transparent: true, opacity: 0.28,
-      side: THREE.BackSide, depthTest: true
-    });
-    var outline = new THREE.Mesh(outlineGeo, outlineMat);
-    outline.position.copy(bcenter).sub(group.position);
-    outline.name = '__outline__';
-    outline.visible = false;
-    outline.renderOrder = 999;
-    group.add(outline);
+    // 说明：早期版本在此预挂 __outline__ 发光薄壳做"最近可交互物"描边高亮。
+    // 实测中它在角色身上呈现为一层彩色发光方块/荧光边框，与写实建模风格冲突，
+    // 已按要求移除。辨认目标改由 HUD 文字提示，不再用屏幕内发光描边。
     group.userData.kind = e.kind;
     entities[e.id] = group;
     return group;
@@ -655,29 +642,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
       obj.visible = !!e.alive && e.floor === player.floor && !(e.id === player.id && (state.mode === 'first' || camera.position.distanceTo(playerTarget) < 1.2)) && canSee(w, player, e) && !wallOccludes(w, player.floor, camera.position, entityPoint);
     });
 
-    // P0: 边缘高亮——给玩家最近的可交互物体描发光边
-    var interactableKinds = { clue: 1, phone: 1, food: 1, medicine:1, exit:1, battery: 1, npc: 1 };
-    var hiliteColor = { clue: 0xffd68a, phone: 0x6ad9c8, food: 0x99d477, medicine:0xff786b, exit:0x6dff9a, battery: 0x99d477, npc: 0xff7a6a, player: 0x8aa9e8 };
-    var nearest = null, nearestDist = Infinity;
-    w.entities.forEach(function (e) {
-      if (!interactableKinds[e.kind]) return;
-      if (!e.alive || e.floor !== player.floor) return;
-      var d = Math.hypot(e.x - player.x, e.y - player.y);
-      if (d < nearestDist && d < 350 && canSee(w, player, e)) { nearestDist = d; nearest = e; }
-    });
-    Object.keys(entities).forEach(function (id) {
-      var obj = entities[id];
-      var ol = obj.children.find(function (c) { return c.name === '__outline__'; });
-      if (!ol) return;
-      var eKind = obj.userData.kind;
-      if (nearest && nearest.id === id && hiliteColor[eKind]) {
-        ol.visible = true;
-        ol.material.color.setHex(hiliteColor[eKind]);
-        ol.material.opacity = 0.35 + 0.2 * Math.sin(performance.now() / 200);
-      } else {
-        ol.visible = false;
-      }
-    });
+    // 发光描边高亮已移除（在角色身上呈现为荧光方块）；辨认目标由 HUD 文字提示。
 
     renderer.setViewport(x, 0, width, window.innerHeight);
     renderer.setScissor(x, 0, width, window.innerHeight);
