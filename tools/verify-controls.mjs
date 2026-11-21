@@ -165,8 +165,8 @@ test('controller turning is consistent at 30, 60 and 120 fps', () => {
   }
 });
 test('walking stops at walls and passes through the actual doorway', () => {
-  // 新 GLB 布局：中央走廊 y∈[442,554] 畅通；北走廊墙 y=400(膨胀到416)，
-  // 门洞中心 x=450/712/974/1236/1498，净通行 x∈[431,469] 等。
+  // 新 GLB 布局：中央走廊畅通；北走廊墙 y=400，门洞中心 x=450/712/974/1236/1498，
+  // 门洞半宽 75、膨胀 20 → 净通行 x∈[395,505] 等（约 110px，进出顺滑）。
   const w = reset(); Object.assign(w.p1, { floor: 1, x: 350, y: 490 });
   key('KeyW'); step(2); key('KeyW', false);
   assert.ok(w.p1.y >= 414, 'north room wall (solid segment) must block A');
@@ -535,9 +535,10 @@ test('单层世界：楼层表只含 1F，所有实体/墙/科室都在 1F，无
 // ========== 新 GLB 场景碰撞一致性：视觉空地必须真能走 ==========
 test('碰撞墙与新 GLB 场景对齐：中央走廊全程畅通、无横墙误挡', () => {
   const w = reset();
-  // 复现游戏 blocked() 的判定（每边膨胀 26px），验证视觉上的空地确实可走。
+  // 复现游戏 blocked() 的判定（每边膨胀 = G.collidePad），验证视觉上的空地确实可走。
+  const pad = G.collidePad;
   const hit = (x, y) => w.walls.some(b =>
-    b.floor === 1 && x > b.x - 26 && x < b.x + b.w + 26 && y > b.y - 26 && y < b.y + b.h + 26);
+    b.floor === 1 && x > b.x - pad && x < b.x + b.w + pad && y > b.y - pad && y < b.y + b.h + pad);
   // 1) 中央走廊 y=490：沿 X 从 100 到 1900 全程不得被任何墙挡住（旧布局横穿的竖墙必须清除）。
   for (let x = 100; x <= 1900; x += 20) {
     assert.ok(!hit(x, 490), `中央走廊 (${x},490) 不应有隐形墙`);
@@ -555,6 +556,16 @@ test('碰撞墙与新 GLB 场景对齐：中央走廊全程畅通、无横墙误
   [450, 712, 974, 1236, 1498].forEach(cx => {
     assert.ok(!hit(cx, 400), `北门洞 x=${cx} 应畅通`);
     assert.ok(!hit(cx, 580), `南门洞 x=${cx} 应畅通`);
+  });
+  // 5) 门洞通行容差：玩家不必精确对齐门中心，偏移 ±40px 也应能从走廊进入房间。
+  //    旧布局(GAP=90,PAD=26)净通行仅 38px、容差 ±10px，稍偏就卡住——这是本次修复的核心。
+  [450, 712, 974, 1236, 1498].forEach(cx => {
+    [-40, -20, 0, 20, 40].forEach(off => {
+      // 从走廊 y=490 到北房间 y=250 的竖直通道上，每个采样点都不能被墙挡。
+      for (let y = 490; y >= 250; y -= 15) {
+        assert.ok(!hit(cx + off, y), `北门洞 x=${cx}${off >= 0 ? '+' : ''}${off} 通道 (${cx + off},${y}) 不应卡住`);
+      }
+    });
   });
 });
 

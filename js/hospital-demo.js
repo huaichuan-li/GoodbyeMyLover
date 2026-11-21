@@ -409,10 +409,16 @@
   }
 
   // ========== 碰撞检测 ==========
+  // 玩家与墙的碰撞膨胀（逻辑单位）。旧值 26 配合门洞 GAP=90 时，门洞净通行
+  // 仅 90-2*26=38px，玩家必须精确对齐门洞中心 ±10px 才能穿过，稍微偏一点就
+  // “撞在看不见的门框上”卡住。降到 20 配合加宽的门洞（GAP=150，见 levels.js），
+  // 门洞容差提升到 ±40px，进出房间顺滑，同时仍保留足够的墙体碰撞手感。
+  var COLLIDE_PAD = 20;
+  G.collidePad = COLLIDE_PAD; // 暴露给回归测试，避免常量多处硬编码漂移
   function blocked(w,p,x,y){
     for(var i=0;i<w.walls.length;i++){
       var b=w.walls[i];
-      if(b.floor===p.floor&&x>b.x-26&&x<b.x+b.w+26&&y>b.y-26&&y<b.y+b.h+26)return true;
+      if(b.floor===p.floor&&x>b.x-COLLIDE_PAD&&x<b.x+b.w+COLLIDE_PAD&&y>b.y-COLLIDE_PAD&&y<b.y+b.h+COLLIDE_PAD)return true;
     }
     return false;
   }

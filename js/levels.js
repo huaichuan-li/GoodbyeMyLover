@@ -26,8 +26,11 @@
       wall(w,f,cx-7,ROOM_S_TOP,14,ROOM_S_BOT-ROOM_S_TOP,'partition'); // 南侧隔墙
     });
     // 走廊两侧的连续墙，按门洞切成墙段：门洞处留空，让玩家可进出房间。
-    // 门洞宽 90（DOOR_X±45），两端到地图边界的部分补成墙。
-    var GAP = 90;
+    // 门洞宽 150（DOOR_X±75）：旧值 90 配合碰撞膨胀 26 时净通行仅 38px，
+    // 玩家必须精确对齐门洞中心才能穿过，稍偏就卡住。加宽到 150 后净通行
+    // 约 110px（配合 hospital-demo.js 的 COLLIDE_PAD=20），进出房间顺滑；
+    // 相邻门洞之间仍有约 82px 墙段，墙体结构完整不会“全打通”。
+    var GAP = 150;
     [CORRIDOR_N, CORRIDOR_S].forEach(function(y){
       var edges = DOOR_X.map(function(cx){return [cx-GAP/2, cx+GAP/2];});
       var cursor = 36;
