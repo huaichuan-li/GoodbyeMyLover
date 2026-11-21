@@ -11,7 +11,8 @@
 | 单位 | METRIC，scale_length=1.0（1 单位 = 1 米） |
 | 世界包围盒（Blender Z-up） | min(-1.15, -5.6, -3.379) / max(30.909, 5.6, 4.589) |
 | 尺寸 | 约 32.06 × 11.2 × 7.97 米（一层医院走廊 + 病房） |
-| 贴图 | 无外部贴图（仅内置 Render Result / Viewer Node）；材质为参数化纯色 28 种 |
+| 贴图 | 无外部图片贴图（仅内置 Render Result / Viewer Node）；27 个材质中 7 个用**程序化节点**（Noise/Voronoi/ColorRamp/Bump）生成纹理：M_WallUpper/M_WallLower/M_Floor/M_Ceiling/M_Metal/M_RustMetal/M_Concrete |
+| 诊断 | glTF/GLB 不支持程序化节点，直接导出会退化为纯色 → 必须 Bake 成图片贴图（见下） |
 
 ## 命名前缀分类（mesh）
 
@@ -33,7 +34,23 @@ BED 140 · DZ 48 · FRONT 40 · STAIR 32 · DEBRIS 26 · CEIL 25 · PART 24(隔�
 1. 全量导出（保留墙地天花），运行时按名字前缀隐藏结构件 → GLB 提供家具/灯光氛围，墙由程序化接管（推荐，与计划 §3 一致）
 2. 导出时直接剔除结构件 → GLB 更小
 
-采用方案 1：导出全部 mesh，运行时用 `WALL_/JAMB_/PART_/CEIL_/LINTEL_/FLOOR_` 前缀判定隐藏。由于源命名非统一 `WALL_`，脚本会在导出前给结构件统一加 `WALL_` 前缀，便于 JS 侧识别。
+采用方案 1：导出全部 mesh，脚本在导出前给结构件统一加 `WALL_` 前缀便于识别。
+
+**最终实现更新（v1.4）**：GLB 中的结构件不再隐藏——墙/门框/天花/地板/家具全部作为画面主体完整显示，并统一 `DoubleSide` 双面渲染（外部模型从走廊内部看背面会被剔除成空洞）。`WALL_` 前缀保留用于资产识别。与之重叠的程序化方块墙/天花在 GLB 到位后隐藏（仅留地板兜底、科室牌等定位标志）。碰撞/遮挡/镜头避障/手电判定始终走逻辑真源 `w.walls`，与视觉网格完全解耦。
+
+## 程序化材质烘焙（v1.5，关键修复）
+
+**问题**：Blender 场景的米白上墙 + 深绿墙裙、地砖裂纹、金属污渍等纹理全部由程序化节点实时生成，没有一张图片贴图。glTF/GLB 格式不支持 Noise/Voronoi/ColorRamp 节点，直接导出时每个材质只能取一个近似纯色——这就是游戏里"场景还是方块/纯色"的真正原因（不是组员漏给贴图资产）。
+
+**修复**：`tools/export-hospital-glb.py` 在导出前用 Cycles 把 7 个程序化材质的 Base Color 烘焙成 1024² JPEG 贴图（Bake DIFFUSE COLOR），接到各材质 Base Color 后内嵌进 GLB。验证：新 GLB `images=7 / textures=7 / texturedMats=7`（旧版全为 0），体积 1.4MB → 1.8MB。
+
+**相机朝向**：医院走廊沿 X 轴延伸，默认相机朝向已设为走廊纵深（P1 yaw=+π/2、P2 yaw=-π/2），否则 yaw=0 会正对横向侧墙只看到近处墙面色块。
+
+复现命令：
+```bash
+.workbuddy/blender-patched/Blender.app/Contents/MacOS/Blender \
+  --background --python tools/export-hospital-glb.py
+```
 
 ## 对齐
 

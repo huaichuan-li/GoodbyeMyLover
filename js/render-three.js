@@ -10,9 +10,11 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
   var canvas = G.utils.el('game');
   var renderer, scene, cameras = {}, flashlights = {}, floors = {}, entities = {}, builtWorld = null;
   var hemisphereLight = null, keyLight = null, corridorLight = null;
+  // 医院 GLB 走廊沿 X 轴延伸；默认朝向走廊纵深（yaw=PI/2 朝 +X，P2 朝 -X），
+  // 否则 yaw=0 会正对横向侧墙，只看到近处墙面色块。
   var views = {
-    p1: { mode: 'third', yaw: 0, pitch: 0.18, distance: 3.2, dragging: false, lastX: 0, lastY: 0 },
-    p2: { mode: 'third', yaw: 0, pitch: 0.18, distance: 3.2, dragging: false, lastX: 0, lastY: 0 }
+    p1: { mode: 'third', yaw: Math.PI / 2, pitch: 0.18, distance: 3.2, dragging: false, lastX: 0, lastY: 0 },
+    p2: { mode: 'third', yaw: -Math.PI / 2, pitch: 0.18, distance: 3.2, dragging: false, lastX: 0, lastY: 0 }
   };
   var sources = {};
   var sceneGLB = null;           // hospital_1f.glb 的场景实例
@@ -151,15 +153,17 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
         loadDone();
       });
     });
-    // 2) 医院场景 GLB（WALL_ 前缀结构件在运行时隐藏，墙仍由 w.walls 程序化生成）
+    // 2) 医院场景 GLB：完整显示最新建模（墙 / 门框 / 天花 / 地板 / 家具）
     loadPending++;
     loader.load(SCENE_GLB, function (gltf) {
       var model = gltf.scene;
       model.traverse(function (o) {
-        if (o.isMesh && /^WALL_/.test(o.name)) o.visible = false;
         if (o.isMesh) {
+          // 外部 GLB 的墙/门框从走廊内部观察常是背面，需双面渲染否则被剔除成空洞。
+          if (o.material) { o.material.side = THREE.DoubleSide; o.material.needsUpdate = true; }
+          // 碰撞 / 遮挡 / 镜头避障 / 手电判定仍由逻辑真源 w.walls 决定，与视觉网格解耦。
           o.castShadow = false; o.receiveShadow = true;
-          o.raycast = function () {}; // 场景装饰不参与相机避障射线，遮挡仍由 w.walls + 程序化几何决定
+          o.raycast = function () {}; // 700+ 装饰 mesh 不参与相机射线，避免性能开销与遮挡错位
         }
       });
       // 归一化到逻辑足迹 X∈[0,24]、Z∈[-4.9,4.9]、底面 y=0，锚点 (12,0,0)
@@ -221,11 +225,12 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
     floors[f] = group;
     scene.add(group);
 
-    // 医院场景 GLB：提供家具/器械/氛围。其 WALL_ 前缀结构件已隐藏，
-    // 实体墙统一由 w.walls 程序化生成，确保画面/碰撞/镜头遮挡/手电判定一致。
+    // 最新医院场景 GLB：墙 / 门框 / 天花 / 地板 / 家具完整显示，作为画面主体。
+    // 视觉以 GLB 为准；碰撞 / 遮挡 / 镜头避障 / 手电仍由逻辑真源 w.walls 决定。
+    var hasSceneGLB = !!sceneGLB;
     if (sceneGLB) group.add(sceneGLB);
 
-    // 地板（略低于 GLB 地面，避免 z-fighting）
+    // 程序化地板作为兜底：位于 GLB 地面下方，平时看不到；GLB 加载失败时顶上。
     box(group, 'floor', [12, base - 0.24, 0], [26, 0.4, 11], mat('floor', 0x46545c));
     var wall = mat('wall', 0x27323a);
     var trim = mat('trim', 0x59656c);
@@ -238,10 +243,10 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
     for (var i = 0; i < 12; i++) box(group, 'ceiling-trim-' + i, [1 + i * 2.05, base + 4.8, 0], [0.08, 0.08, 10.5], trim);
     var lightMat = mat('light', 0xc8d4d8, 0.1);
     for (var i2 = 0; i2 < 6; i2++) box(group, 'ceiling-light-' + i2, [4 + i2 * 3.4, base + 4.9, 0], [1.6, 0.08, 0.4], lightMat);
-    // 逻辑墙（唯一碰撞/遮挡真源）
-    w.walls.forEach(function (b) {
+    // 逻辑墙（唯一碰撞/遮挡真源）——统一 proc-wall 前缀，GLB 到位时可隐藏其可视网格
+    w.walls.forEach(function (b, i) {
       if (b.floor !== f) return;
-      box(group, b.kind || 'partition', [(b.x + b.w / 2) / 100, base + 1.75, (b.y + b.h / 2) / 100 - 4.9], [b.w / 100, 3.5, b.h / 100], trim);
+      box(group, 'proc-wall-' + i + '-' + (b.kind || 'partition'), [(b.x + b.w / 2) / 100, base + 1.75, (b.y + b.h / 2) / 100 - 4.9], [b.w / 100, 3.5, b.h / 100], trim);
     });
     // 科室标识牌（单层 4 个科室）
     G.Level.departments[f].forEach(function (_name, i) {
@@ -259,6 +264,19 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
     box(group, 'warn-line-2', [11.9, base - 0.21, -3.5], [3.5, 0.01, 0.08], warnMat);
 
     addFurniture(group, f, base);
+
+    // GLB 场景到位后，隐藏会与之重叠穿插的程序化硬表面（墙/天花/逻辑墙网格）。
+    // 这些网格仍留在场景图中供相机避障射线使用（Raycaster 会跳过 visible=false），
+    // 但碰撞/遮挡/手电判定本就走 w.walls 逻辑数据，不受可见性影响。
+    if (hasSceneGLB) {
+      group.children.forEach(function (child) {
+        if (child.name === 'floor' || child.name === 'north-wall' || child.name === 'south-wall' ||
+            child.name === 'west-wall' || child.name === 'east-wall' ||
+            /^ceiling-(trim|light)-/.test(child.name) || /^proc-wall-/.test(child.name)) {
+          child.visible = false;
+        }
+      });
+    }
     return group;
   }
 
@@ -572,8 +590,9 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
     return v.mode;
   }
   function resetViews() {
+    views.p1.mode = 'third'; views.p1.yaw = Math.PI / 2; views.p1.pitch = 0.18;
+    views.p2.mode = 'third'; views.p2.yaw = -Math.PI / 2; views.p2.pitch = 0.18;
     ['p1', 'p2'].forEach(function (role) {
-      views[role].mode = 'third'; views[role].yaw = 0; views[role].pitch = 0.18;
       views[role].distance = 3.2; views[role].dragging = false;
     });
   }
@@ -701,10 +720,12 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
     // 调试明亮模式只提高环境照明与曝光，保留墙体碰撞、遮挡和手电逻辑。
     // 普通模式维持停电医院的低环境光，避免改变正式玩法。
     var bright=!!w.brightMode;
-    if(hemisphereLight)hemisphereLight.intensity=bright?1.15:0.12;
-    if(keyLight)keyLight.intensity=bright?0.72:0.04;
-    if(corridorLight)corridorLight.intensity=bright?0.9:0.5;
-    renderer.toneMappingExposure=bright?1.15:0.9;
+    // 普通模式保留停电基调，但环境光抬到能看清 GLB 场景的建模细节；
+    // 手电仍是主要局部照明，L 键明亮模式供验收/试玩看全貌。
+    if(hemisphereLight)hemisphereLight.intensity=bright?1.15:0.5;
+    if(keyLight)keyLight.intensity=bright?0.72:0.42;
+    if(corridorLight)corridorLight.intensity=bright?0.9:0.85;
+    renderer.toneMappingExposure=bright?1.15:1.05;
     if(scene.background)scene.background.setHex(bright?0x4b565d:0x111a21);
     if(scene.fog)scene.fog.color.setHex(bright?0x4b565d:0x111a21);
     var duo = G.Game.mode === 'duo' || G.Game.dualView;

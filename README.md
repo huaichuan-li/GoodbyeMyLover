@@ -23,13 +23,14 @@ node tools/serve.mjs 8080
 
 | 资产 | 路径 | 用途 |
 |---|---|---|
-| 医院场景 | `assets/publics/model/hospital_1f.glb` | 家具、器械、氛围装饰（1.4 MB） |
+| 医院场景 | `assets/publics/model/hospital_1f.glb` | 完整医院建模：墙/门框/天花/家具/器械（1.8 MB，703 mesh，7 张烘焙贴图），画面主体 |
 | 木乃伊角色 | `assets/animated/mummy_animated.glb` | 全员共用基础体型 + `Idle/Walk/Limp_Right` 三段动画（16 MB，22 骨骼） |
 | 道具 | `assets/publics/model/sketchfab/*.glb` | 病床、推车、手机、食物、电池、输液架、手电 |
 
 关键约定：
 
-- 医院 GLB 中 `WALL_` 前缀的结构件在运行时隐藏，**墙矩形仍以 `w.walls` 为唯一真源**，保证碰撞、遮挡、镜头避障与手电判定一致；场景装饰 mesh 禁用 raycast。
+- 医院 GLB **完整显示**（墙/门框/天花/地板/家具），并统一双面渲染，避免从走廊内部看墙面被背面剔除成空洞；与之重叠的程序化方块墙/天花在 GLB 到位后隐藏（仅保留地板兜底与科室牌等定位标志）。**碰撞与遮挡仍以 `w.walls` 为唯一真源**，不随视觉网格变化，保证碰撞、遮挡、镜头避障与手电判定一致；场景装饰 mesh 禁用 raycast。
+- 源 `.blend` 的墙面/地砖/金属纹理是**程序化节点**（Noise/Voronoi/ColorRamp），glTF 不支持，直接导出会退化成纯色块。导出脚本先用 Cycles 把 7 个材质 Bake 成 1024² JPEG 贴图再内嵌进 GLB（现含 7 张贴图）。走廊沿 X 轴，默认相机朝向纵深（P1 +π/2 / P2 -π/2），否则会正对侧墙。重导出命令见 `tools/ASSET_INSPECT.md`。
 - 角色 GLB 用 `SkeletonUtils.clone` 共享几何/材质/贴图，只克隆骨骼层级；7 种外貌 trait 作为小挂件挂到骨骼上，`limpGait`（跛行）直接播放 `Limp_Right` 动画，无挂件。
 - 灯灭环境下两名玩家各持一盏独立手电，只照亮自己半屏；第三人称镜头遇墙/家具自动回缩。
 

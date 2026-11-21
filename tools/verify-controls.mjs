@@ -71,6 +71,10 @@ function test(name, fn) { fn(); checks++; console.log('PASS ' + name); }
 function reset() {
   pad = null; G.Input.down = {}; G.Input.gamepad = null; G.Input.gamepadButtons = [];
   G.Game.reset('duo');
+  // 测试历史断言假设初始 yaw=0（前进=-y）；游戏实际默认朝向走廊纵深(+/-PI/2)。
+  // Game.reset 内部会 resetViews()，因此在其后再校正回 0。
+  G.Renderer.updateGamepadCamera('p1', -Math.PI / 2 / (2.1 * 0.1), 0, 0.1);
+  G.Renderer.updateGamepadCamera('p2', Math.PI / 2 / (2.1 * 0.1), 0, 0.1);
   // 开局抽卡页：两人确认后才进入 PLAY，测试里直接模拟确认。
   G.Game.onPress({ code: 'KeyY', owner: 'p1' });
   G.Game.onPress({ code: 'GamepadA', owner: 'p2', source: 'gamepad' });
@@ -177,10 +181,11 @@ test('TPS camera and near plane stay outside walls at corners on the single floo
       G.Renderer.renderAll();
       const camera = frames[0].camera, base = (floor - 1) * 4.2;
       assert.ok(camera.position.y <= base + 3.22 + 1e-6);
+      const actualYaw = G.Renderer.getCameraYaw('p1');
       const direction = camera.getWorldDirection(new Three.Vector3());
       const horizontal = Math.hypot(direction.x, direction.z);
-      close(direction.x / horizontal, Math.sin(turn * Math.PI / 12));
-      close(-direction.z / horizontal, Math.cos(turn * Math.PI / 12));
+      close(direction.x / horizontal, Math.sin(actualYaw));
+      close(-direction.z / horizontal, Math.cos(actualYaw));
       const samples = [camera.position];
       for (const x of [-1, 1]) for (const y of [-1, 1]) samples.push(new Three.Vector3(x, y, -1).unproject(camera));
       for (const wall of w.walls.filter(b => b.floor === floor)) {
@@ -505,7 +510,7 @@ test('单层世界：楼层表只含 1F，所有实体/墙/科室都在 1F，无
 });
 
 // ========== 医院场景 GLB 断言 ==========
-test('医院场景 GLB：WALL_ 结构件隐藏且射线禁用，归一化后挂到 1F', () => {
+test('医院场景 GLB：结构件完整显示、射线禁用，程序化墙隐藏，归一化后挂到 1F', () => {
   const sceneAsset = pendingAssets.find(x => x.url.endsWith('hospital_1f.glb'));
   assert.ok(sceneAsset, '应请求医院场景 GLB');
   const src = new Three.Group();
@@ -515,9 +520,10 @@ test('医院场景 GLB：WALL_ 结构件隐藏且射线禁用，归一化后挂�
   decor.name = 'prop_chair';
   src.add(wallMesh, decor);
   sceneAsset.callback({ scene: src });
-  assert.equal(wallMesh.visible, false, 'WALL_ 前缀结构件应隐藏');
+  assert.equal(wallMesh.visible, true, 'WALL_ 结构件应完整显示（最新建模场景为画面主体）');
+  assert.equal(wallMesh.material.side, Three.DoubleSide, '墙/门框应从走廊内部双面可见，避免背面剔除成空洞');
   assert.equal(typeof wallMesh.raycast, 'function');
-  assert.doesNotThrow(() => wallMesh.raycast(), '结构件射线应为禁用空函数');
+  assert.doesNotThrow(() => wallMesh.raycast(), '场景 mesh 射线应为禁用空函数');
   assert.equal(decor.visible, true, '装饰件应可见');
   G.Renderer.renderAll();
   const floorGroup = frames[0].scene.getObjectByName('hospital-floor-1');
@@ -527,6 +533,12 @@ test('医院场景 GLB：WALL_ 结构件隐藏且射线禁用，归一化后挂�
   // 归一化足迹：宽度映射到 24m，取 min(sx,sz)，此处 size.x=4 -> 6 倍缩放落在 anchor 子节点
   const anchor = glbInstance.children[0];
   assert.ok(Math.abs(anchor.scale.x - 6) < 1e-6, '应按 24/4=6 缩放到逻辑足迹');
+  // GLB 到位后：程序化方块墙/天花应隐藏，只保留逻辑碰撞数据（走 w.walls）
+  const procWalls = floorGroup.children.filter(x => /^proc-wall-/.test(x.name));
+  assert.ok(procWalls.length > 0, '应生成程序化逻辑墙网格作为碰撞可视化兜底');
+  assert.ok(procWalls.every(x => x.visible === false), 'GLB 到位后程序化墙网格应隐藏，避免与新场景重叠');
+  const shell = floorGroup.children.filter(x => /^(north-wall|south-wall|west-wall|east-wall|ceiling-(trim|light)-)/.test(x.name));
+  assert.ok(shell.length > 0 && shell.every(x => x.visible === false), 'GLB 到位后程序化边界墙/天花应隐藏');
 });
 
 // ========== 动画木乃伊 GLB 断言 ==========
