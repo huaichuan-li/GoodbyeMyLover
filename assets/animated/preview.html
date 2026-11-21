@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>木乃伊 · 动画预览</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#11151b;color:#e7e8e9;font:15px -apple-system,BlinkMacSystemFont,sans-serif}header{position:absolute;top:28px;left:32px;z-index:1}h1{font-size:23px;font-weight:600;margin:0 0 10px}p{color:#a2aab8;margin:0;line-height:1.7}#view{width:100vw;height:100vh;display:block}.controls{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);padding:16px 20px;border:1px solid #38414d;border-radius:18px;background:#17202de8;max-width:95vw;width:660px;backdrop-filter:blur(12px)}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}button,select{color:#d5dce6;background:#263343;border:1px solid #445064;border-radius:9px;padding:10px 15px;font:inherit;cursor:pointer}button.active{background:#90c9cb;color:#142627;border-color:#90c9cb}input{flex:1;min-width:130px;accent-color:#90c9cb}#hint{margin-top:12px;font-size:13px;min-height:21px}#status{position:absolute;right:28px;top:32px;color:#94a1b1;font-size:13px}.progress{margin-top:12px}a{color:#a3cfd1;text-decoration:none}#time{font-variant-numeric:tabular-nums;width:100px;font-size:12px;color:#a2aab8}@media(max-width:600px){header{left:18px;top:20px}#status{display:none}button,select{padding:8px 11px}.controls{bottom:12px}}
+</style>
+<script type="importmap">{"imports":{"three":"../../../../vendor/three/three.module.js"}}</script>
+</head><body><header><h1>木乃伊 · 动画预览</h1><p>拖动旋转视角，滚轮缩放<br>保留左腕蓝布条 · 右脚拖地使用角色自身的右侧</p></header><span id="status">正在加载模型…</span><canvas id="view"></canvas>
+<section class="controls"><div class="row"><button data-clip="Idle">待机</button><button data-clip="Walk">普通行走</button><button data-clip="Limp_Right" class="active">右脚拖地</button><button id="play">暂停</button><select id="speed" aria-label="播放速度"><option value="0.5">0.5 倍速</option><option value="1" selected>正常速度</option><option value="1.5">1.5 倍速</option></select><button id="bones">骨骼</button></div><div class="row progress"><input id="seek" type="range" min="0" max="1" step="0.001" value="0" aria-label="动画时间"><span id="time"></span></div><p id="hint">左脚迈步承重，右脚贴近地面向前拖动。</p></section>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from '../../../../vendor/three/examples/jsm/loaders/GLTFLoader.js';
+import {OrbitControls} from '../../../../asset-viewer/vendor/jsm/controls/OrbitControls.js';
+const canvas=document.querySelector('#view'),renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.25;
+const scene=new THREE.Scene();scene.background=new THREE.Color('#11151b');scene.fog=new THREE.Fog('#11151b',7,18);
+const camera=new THREE.PerspectiveCamera(34,1,.01,100);camera.position.set(-2.7,1.7,4.6);
+const controls=new OrbitControls(camera,canvas);controls.target.set(0,.85,0);controls.enableDamping=true;controls.minDistance=1;controls.maxDistance=8;controls.maxPolarAngle=Math.PI*.51;
+scene.add(new THREE.HemisphereLight(0xdfeaff,0x65605a,2));
+function light(pos,color,intensity){const l=new THREE.DirectionalLight(color,intensity);l.position.set(...pos);scene.add(l);return l}
+const key=light([-3,5,4],0xffe9ca,3.1);key.castShadow=true;key.shadow.mapSize.set(2048,2048);key.shadow.camera.left=-2;key.shadow.camera.right=2;key.shadow.camera.top=3;key.shadow.camera.bottom=-2;key.shadow.normalBias=.015;light([3,2,1],0xbad9ff,1.4);light([1,3,-3],0x9abbbb,2);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(100,100),new THREE.MeshStandardMaterial({color:0x202b35,roughness:1}));floor.rotation.x=-Math.PI/2;floor.position.y=-.004;floor.receiveShadow=true;scene.add(floor);
+const grid=new THREE.GridHelper(6,24,0x4b616c,0x2b3a46);grid.position.y=-.003;scene.add(grid);
+let mixer,action,clips={},helper,paused=false,current='Limp_Right',rate=1,loaded=false;
+const hints={Idle:'轻微呼吸与晃动，双脚留在原地。',Walk:'双脚交替抬起，保持僵硬的小步幅。',Limp_Right:'左脚迈步承重，右脚贴近地面向前拖动。'};
+function select(name){if(!loaded)return;current=name;mixer.stopAllAction();action=mixer.clipAction(clips[name]);action.reset().play();mixer.update(0);document.querySelectorAll('[data-clip]').forEach(b=>b.classList.toggle('active',b.dataset.clip===name));document.querySelector('#hint').textContent=hints[name];}
+new GLTFLoader().load('./mummy_animated.glb',g=>{scene.add(g.scene);g.scene.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false;}});mixer=new THREE.AnimationMixer(g.scene);g.animations.forEach(c=>clips[c.name]=c);helper=new THREE.SkeletonHelper(g.scene);helper.visible=false;scene.add(helper);loaded=true;select(current);document.querySelector('#status').textContent='3 个循环动作 · 拖动检查任意角度';},undefined,e=>{document.querySelector('#status').textContent='模型加载失败，请通过项目本地服务打开';console.error(e)});
+document.querySelectorAll('[data-clip]').forEach(b=>b.onclick=()=>select(b.dataset.clip));
+document.querySelector('#play').onclick=e=>{paused=!paused;e.target.textContent=paused?'播放':'暂停';};
+document.querySelector('#speed').onchange=e=>rate=Number(e.target.value);
+document.querySelector('#bones').onclick=e=>{if(helper){helper.visible=!helper.visible;e.target.classList.toggle('active',helper.visible);}};
+document.querySelector('#seek').oninput=e=>{if(action){action.time=Number(e.target.value)*clips[current].duration;mixer.update(0)}};
+function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();}window.addEventListener('resize',resize);resize();
+const clock=new THREE.Clock();function tick(){requestAnimationFrame(tick);const dt=Math.min(clock.getDelta(),.08);if(mixer){mixer.update(paused?0:dt*rate);document.querySelector('#seek').value=action.time/clips[current].duration;document.querySelector('#time').textContent=action.time.toFixed(2)+' / '+clips[current].duration.toFixed(2)+'s';}controls.update();renderer.render(scene,camera);}tick();
+</script></body></html>

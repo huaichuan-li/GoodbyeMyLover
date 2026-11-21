@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url';
 import * as Three from '../vendor/three/three.module.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const mapDots = [];
+const mapContext = {
+  fillStyle: '', strokeStyle: '', font: '',
+  clearRect() {}, fillRect() {}, strokeRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fillText() {}, fill() {},
+  arc(x, y, radius) { mapDots.push({ x, y, radius, color: this.fillStyle }); }
+};
 class Target {
   listeners = {};
   style = {};
@@ -17,6 +23,7 @@ class Target {
   setPointerCapture() {}
   releasePointerCapture() {}
   querySelectorAll() { return []; }
+  getContext() { return mapContext; }
 }
 const elements = new Map();
 const document = new Target();
@@ -40,7 +47,11 @@ class RenderSink {
   }
 }
 class Loader { load(url, callback) { pendingAssets.push({ url, callback }); } }
-const context = vm.createContext({ window, document, navigator: { getGamepads: () => pad ? [pad] : [] }, performance, console, Event, requestAnimationFrame() {}, THREE: { ...Three, WebGLRenderer: RenderSink }, GLTFLoader: Loader });
+// SkeletonUtils.clone is imported as an ESM addon; the production build uses the
+// real skinned-clone. In the CPU test a plain deep clone is enough to preserve the
+// named bones that trait props attach to.
+const cloneSkinned = source => source.clone(true);
+const context = vm.createContext({ window, document, navigator: { getGamepads: () => pad ? [pad] : [] }, performance, console, Event, requestAnimationFrame() {}, THREE: { ...Three, WebGLRenderer: RenderSink }, GLTFLoader: Loader, cloneSkinned });
 function run(file, transform = x => x) { vm.runInContext(transform(fs.readFileSync(root + file, 'utf8')), context, { filename: file }); }
 for (const file of ['data/config.js', 'data/script.js', 'js/core.js', 'js/world.js', 'js/input.js', 'js/levels.js', 'js/beam.js', 'js/hazard.js']) run(file);
 const G = window.G;
@@ -156,9 +167,9 @@ test('walking stops at walls and passes through the actual doorway', () => {
   Object.assign(w.p1, { x: 485, y: 490 }); key('KeyW'); step(2); key('KeyW', false);
   assert.ok(w.p1.y < 300, 'door opening must allow passage');
 });
-test('TPS camera and near plane stay outside walls at corners on all floors', () => {
+test('TPS camera and near plane stay outside walls at corners on the single floor', () => {
   const w = reset();
-  for (const floor of [1, 2, 3, 4]) for (const point of [[400, 580], [400, 420], [620, 420], [485, 490], [70, 70], [2335, 915]]) {
+  for (const floor of [1]) for (const point of [[400, 580], [400, 420], [620, 420], [485, 490], [70, 70], [2335, 915]]) {
     Object.assign(w.p1, { floor, x: point[0], y: point[1] });
     for (const pitch of [-1, 0, 1]) for (let turn = 0; turn < 24; turn++) {
       G.Renderer.resetViews();
@@ -181,7 +192,11 @@ test('TPS camera and near plane stay outside walls at corners on all floors', ()
 });
 test('walls block both entity rendering and interaction', () => {
   const w = reset(); Object.assign(w.p1, { floor: 1, x: 400, y: 420 });
-  const npc = w.entities.find(e => e.kind === 'npc');
+  const npcs = w.entities.filter(e => e.kind === 'npc');
+  const npc = npcs[0];
+  // 单层后所有 NPC 都在 1F；隔离出唯一目标，避免其它随机 NPC 干扰辨认/伤害判定。
+  npcs.slice(1).forEach(e => { e.alive = false; });
+  Object.assign(w.p2, { x: 1885, y: 490 }); // 拉开距离，避免触发双向相认
   Object.assign(npc, { floor: 1, x: 400, y: 350, state: 'still' });
   assert.equal(G.Renderer.canSee(w, w.p1, npc), false);
   G.Renderer.renderAll(); assert.ok(!frames[0].visible.includes('entity-' + npc.id));
@@ -189,7 +204,7 @@ test('walls block both entity rendering and interaction', () => {
   Object.assign(w.p1, { x: 485 }); Object.assign(npc, { x: 485 });
   assert.equal(G.Renderer.canSee(w, w.p1, npc), true);
 });
-test('each screen uses its own eye-mounted flashlight; rebuild keeps one stairwell', () => {
+test('each screen uses its own eye-mounted flashlight; rebuild keeps a single floor', () => {
   reset(); G.Renderer.renderAll();
   frames.forEach((frame, index) => {
     const role = index ? 'p2' : 'p1', p = G.Game.world[role];
@@ -198,14 +213,17 @@ test('each screen uses its own eye-mounted flashlight; rebuild keeps one stairwe
     close(frame.lights[0].position.y, (p.floor - 1) * 4.2 + 1.58);
   });
   for (let i = 0; i < 3; i++) { reset(); G.Renderer.renderAll(); }
-  assert.equal(frames[0].scene.children.filter(x => x.name === 'stairwell-core').length, 1);
+  const floorGroups = frames[0].scene.children.filter(x => /^hospital-floor-/.test(x.name));
+  assert.equal(floorGroups.length, 1, 'only one hospital floor group should exist');
+  assert.equal(floorGroups[0].name, 'hospital-floor-1');
+  assert.equal(frames[0].scene.children.filter(x => x.name === 'stairwell-core').length, 0);
 });
 test('loaded props retain normalized centers when placed in the hospital', () => {
   const bed = pendingAssets.find(x => x.url.endsWith('prop_hospital_bed.glb'));
   const source = new Three.Group();
   const mesh = new Three.Mesh(new Three.BoxGeometry(20, 10, 5)); mesh.position.set(30, 25, -40); source.add(mesh);
   bed.callback({ scene: source }); G.Renderer.renderAll();
-  const floor = frames[0].scene.getObjectByName('hospital-floor-2');
+  const floor = frames[0].scene.getObjectByName('hospital-floor-1');
   const instance = floor.children.find(x => x.userData.sourceBounds);
   const bounds = new Three.Box3().setFromObject(instance), center = bounds.getCenter(new Three.Vector3());
   close(center.x, instance.position.x); close(center.z, instance.position.z); close(bounds.min.y, instance.position.y);
@@ -377,13 +395,14 @@ test('普通模式可跳过转盘动画并直接随机揭晓，各自仍需确�
 
 test('调试模式可自由选六张卡、明亮模式和双人确认', () => {
   G.Game.reset('debug'); const w=G.Game.world;
-  assert.equal(G.Game.debugMode,true); assert.equal(w.brightMode,false);
+  assert.equal(G.Game.debugMode,true); assert.equal(w.brightMode,true, '调试模式默认全亮');
   G.Game.onPress({code:'Digit6',owner:'p1'});
   assert.equal(w.p1.beamCard.id,G.Beam.CARDS[5].id);
   G.Game.onPress({code:'GamepadUp',owner:'p2',source:'gamepad'});
   G.Game.onPress({code:'GamepadUp',owner:'p2',source:'gamepad'});
   G.Game.onPress({code:'GamepadA',owner:'p2',source:'gamepad'});
   assert.equal(w.p2.beamCard.id,G.Beam.CARDS[2].id);
+  G.Game.onPress({code:'KeyL',owner:'p1'}); assert.equal(w.brightMode,false);
   G.Game.onPress({code:'KeyL',owner:'p1'}); assert.equal(w.brightMode,true);
   G.Game.onPress({code:'KeyY',owner:'p1'});
   assert.equal(w.p1.cardReady,true); assert.equal(G.State.current,'DRAW');
@@ -391,9 +410,20 @@ test('调试模式可自由选六张卡、明亮模式和双人确认', () => {
   assert.equal(G.State.current,'PLAY');
 });
 
+test('调试模式小地图显示同层队友位置，普通模式隐藏队友位置', () => {
+  G.Game.reset('debug'); const w=G.Game.world;
+  Object.assign(w.p1,{floor:1,x:500,y:300});
+  Object.assign(w.p2,{floor:1,x:1500,y:700});
+  mapDots.length=0; G.UI.update(w);
+  assert.ok(mapDots.some(d=>Math.abs(d.x-1500/2400*220)<1e-6&&Math.abs(d.y-700/980*110)<1e-6&&d.color==='#f18ac4'), 'A 地图应显示 B 的位置');
+  assert.ok(mapDots.some(d=>Math.abs(d.x-500/2400*220)<1e-6&&Math.abs(d.y-300/980*110)<1e-6&&d.color==='#7fd7ee'), 'B 地图应显示 A 的位置');
+  w.debugMode=false; mapDots.length=0; G.UI.update(w);
+  assert.ok(!mapDots.some(d=>Math.abs(d.x-1500/2400*220)<1e-6&&Math.abs(d.y-700/980*110)<1e-6&&d.color==='#f18ac4'), '普通模式应隐藏队友标记');
+});
+
 test('同层玩法：危险区扣共享血量并逐步模糊，离开后恢复', () => {
   const w = reset();
-  w.p1.floor = w.p2.floor = 2;
+  w.p1.floor = w.p2.floor = 1;
   Object.assign(w.p1, { x: 1200, y: 490 });
   Object.assign(w.p2, { x: 1885, y: 490 });
   const hp = w.sharedHp;
@@ -410,15 +440,15 @@ test('共享血量归零后倒地，另一名玩家靠近长按确认完成救�
   w.sharedHp = w.p1.hp = w.p2.hp = 1;
   G.Hazard.damage(w, 2, { downedRole: 'p1' });
   assert.equal(w.downedRole, 'p1'); assert.equal(w.p1.downed, true);
-  Object.assign(w.p1, { floor: 2, x: 1000, y: 490 });
-  Object.assign(w.p2, { floor: 2, x: 1040, y: 490 });
+  Object.assign(w.p1, { floor: 1, x: 1000, y: 490 });
+  Object.assign(w.p2, { floor: 1, x: 1040, y: 490 });
   step(2.1);
   assert.equal(w.downedRole, null); assert.equal(w.sharedHp, 35);
 });
 
 test('三秒双向相认进入逃生阶段，双方抵达出口后胜利', () => {
   const w = reset();
-  w.p1.floor = w.p2.floor = 2;
+  w.p1.floor = w.p2.floor = 1;
   Object.assign(w.p1, { x: 800, y: 490 }); Object.assign(w.p2, { x: 860, y: 490 });
   G.Hospital.interact(w, 'p1', true);
   assert.equal(w.recognition.state, 'active'); assert.equal(G.State.current, 'PLAY');
@@ -428,6 +458,133 @@ test('三秒双向相认进入逃生阶段，双方抵达出口后胜利', () =>
   Object.assign(w.p1, { x: 2290, y: 490 }); Object.assign(w.p2, { x: 2290, y: 490 });
   step(.1);
   assert.equal(w.ended, true); assert.equal(w.ending, 'escaped');
+});
+
+test('相认成功后小地图显示出口，一人倒下时幸存者到达出口也能逃生', () => {
+  const w = reset();
+  w.p1.floor = w.p2.floor = 1;
+  const exit = w.entities.find(e => e.kind === 'exit');
+  exit.floor = 1;
+  Object.assign(w.p1, { x: 800, y: 490 }); Object.assign(w.p2, { x: 860, y: 490 });
+  G.Hospital.interact(w, 'p1', true); G.Hospital.interact(w, 'p2', true);
+  mapDots.length = 0; G.UI.update(w);
+  assert.ok(mapDots.some(d => Math.abs(d.x - exit.x / 2400 * 220) < 1e-6 && d.color === '#ffd166'), '相认后地图应显示出口');
+  w.p1.downed = true; w.p1.hp = 0; w.downedRole = 'p1';
+  Object.assign(w.p2, { x: exit.x, y: exit.y });
+  step(.1);
+  assert.equal(w.ended, true, '一人倒下后幸存者到达出口应结束游戏');
+  assert.equal(w.ending, 'escaped');
+});
+
+test('相认由同一个辨认动作发起和回应，不受 NPC 抢目标影响', () => {
+  const w = reset();
+  w.p1.floor = w.p2.floor = 1;
+  Object.assign(w.p1, { x: 800, y: 490 }); Object.assign(w.p2, { x: 950, y: 490 });
+  const npc = w.entities.find(e => e.kind === 'npc' && e.floor === 1);
+  if (npc) Object.assign(npc, { x: 810, y: 490, alive: true });
+  G.Game.onPress({ code: 'KeyF', owner: 'p1' });
+  assert.equal(w.recognition.state, 'active', 'A 用辨认键发起相认');
+  assert.equal(w.recognition.participants.p1, true);
+  assert.equal(w.escape.active, false, '单人发起后应等待回应');
+  G.Game.onPress({ code: 'GamepadX', owner: 'p2', source: 'gamepad' });
+  assert.equal(w.recognition.participants.p2, true, 'B 用手柄同一个辨认键回应');
+  assert.equal(w.escape.active, true, '双方回应后立刻进入逃生阶段');
+  assert.equal(G.State.current, 'ESCAPE');
+});
+
+// ========== 单层世界数据断言 ==========
+test('单层世界：楼层表只含 1F，所有实体/墙/科室都在 1F，无楼梯实体', () => {
+  const w = reset();
+  assert.deepEqual(Object.keys(G.Level.departments), ['1']);
+  assert.equal(w.floorCount, 1);
+  assert.equal(JSON.stringify(w.floorNames), JSON.stringify({ 1: '一楼' }));
+  assert.ok(w.entities.every(e => e.floor === 1), '所有实体应在 1F');
+  assert.ok(w.walls.every(b => b.floor === 1), '所有墙应在 1F');
+  assert.ok(!w.entities.some(e => e.kind === 'stairs'), '不应存在楼梯实体');
+  assert.ok(!w.walls.some(b => /stair/i.test(b.kind || '')), '不应存在楼梯墙');
+});
+
+// ========== 医院场景 GLB 断言 ==========
+test('医院场景 GLB：WALL_ 结构件隐藏且射线禁用，归一化后挂到 1F', () => {
+  const sceneAsset = pendingAssets.find(x => x.url.endsWith('hospital_1f.glb'));
+  assert.ok(sceneAsset, '应请求医院场景 GLB');
+  const src = new Three.Group();
+  const wallMesh = new Three.Mesh(new Three.BoxGeometry(4, 3, 0.2), new Three.MeshBasicMaterial());
+  wallMesh.name = 'WALL_partition';
+  const decor = new Three.Mesh(new Three.BoxGeometry(1, 1, 1), new Three.MeshBasicMaterial());
+  decor.name = 'prop_chair';
+  src.add(wallMesh, decor);
+  sceneAsset.callback({ scene: src });
+  assert.equal(wallMesh.visible, false, 'WALL_ 前缀结构件应隐藏');
+  assert.equal(typeof wallMesh.raycast, 'function');
+  assert.doesNotThrow(() => wallMesh.raycast(), '结构件射线应为禁用空函数');
+  assert.equal(decor.visible, true, '装饰件应可见');
+  G.Renderer.renderAll();
+  const floorGroup = frames[0].scene.getObjectByName('hospital-floor-1');
+  assert.ok(floorGroup, '应存在 1F 房间组');
+  const glbInstance = floorGroup.children.find(x => x.userData && x.userData.sourceBounds && x.userData.sourceBounds.x === 4);
+  assert.ok(glbInstance, '归一化后的医院 GLB 应挂到 1F');
+  // 归一化足迹：宽度映射到 24m，取 min(sx,sz)，此处 size.x=4 -> 6 倍缩放落在 anchor 子节点
+  const anchor = glbInstance.children[0];
+  assert.ok(Math.abs(anchor.scale.x - 6) < 1e-6, '应按 24/4=6 缩放到逻辑足迹');
+});
+
+// ========== 动画木乃伊 GLB 断言 ==========
+test('动画木乃伊 GLB：角色带 mixer/三条动作，trait 挂件落在指定骨骼', () => {
+  const mummyAsset = pendingAssets.find(x => x.url.endsWith('mummy_animated.glb'));
+  assert.ok(mummyAsset, '应请求木乃伊动画 GLB');
+  const src = new Three.Group();
+  const body = new Three.Mesh(new Three.BoxGeometry(1, 2, 1), new Three.MeshStandardMaterial());
+  body.name = 'output_unwrapped';
+  src.add(body);
+  ['forearm.L', 'chest', 'hand.L', 'head', 'hand.R'].forEach(n => {
+    const bone = new Three.Object3D(); bone.name = n; src.add(bone);
+  });
+  const clips = ['Idle', 'Walk', 'Limp_Right'].map(n => new Three.AnimationClip(n, 1, []));
+  mummyAsset.callback({ scene: src, animations: clips });
+
+  const w = reset();
+  G.Renderer.renderAll();
+  const p1obj = frames[0].scene.getObjectByName('entity-p1');
+  const p2obj = frames[0].scene.getObjectByName('entity-p2');
+  assert.ok(p1obj.userData.mixer, '角色实体应带 AnimationMixer');
+  assert.deepEqual(Object.keys(p1obj.userData.actions).sort(), ['Idle', 'Limp_Right', 'Walk']);
+  assert.ok(p1obj.userData.mixer && p2obj.userData.mixer, '两名玩家都应各自持有 mixer');
+  // p1 traits = darkCoat + badgeAccessory；p2 = blueWristband + limpGait（limp 无挂件）
+  assert.ok(p1obj.getObjectByName('trait-darkCoat'), 'p1 深色外套挂件应存在');
+  assert.ok(p1obj.getObjectByName('trait-badgeAccessory'), 'p1 徽章挂件应存在');
+  assert.ok(p2obj.getObjectByName('trait-blueWristband'), 'p2 蓝色腕带挂件应存在');
+  assert.equal(p2obj.getObjectByName('trait-limpGait'), undefined, 'limpGait 用动画体现，不应有挂件');
+  const coat = p1obj.getObjectByName('trait-darkCoat');
+  assert.equal(coat.parent.name, 'chest', '深色外套应挂在 chest 骨骼');
+  const band = p2obj.getObjectByName('trait-blueWristband');
+  assert.equal(band.parent.name, 'forearm.L', '腕带应挂在 forearm.L 骨骼');
+  // 共享材质：cloneSkinned 不复制材质，两个实例的同一网格应指向同一材质对象
+  const m1 = p1obj.getObjectByName('output_unwrapped');
+  const m2 = p2obj.getObjectByName('output_unwrapped');
+  assert.ok(m1 && m2, '两个角色实例都应有基础网格');
+  assert.equal(m1.material, m2.material, '角色材质应共享，不按实例 clone');
+});
+
+test('角色动画：limpGait 移动播放 Limp_Right，其余移动播放 Walk，静止回到 Idle', () => {
+  const w = reset();
+  G.Renderer.renderAll();
+  const p1obj = frames[0].scene.getObjectByName('entity-p1');
+  const p2obj = frames[0].scene.getObjectByName('entity-p2');
+  // p2 带 limpGait，移动时应播放 Limp_Right
+  Object.assign(w.p2, { moving: true, state: 'walk' });
+  G.Renderer.renderAll();
+  assert.equal(p2obj.userData.activeClip, 'Limp_Right');
+  // p1 无 limpGait，移动时播放 Walk
+  Object.assign(w.p1, { moving: true, state: 'walk' });
+  G.Renderer.renderAll();
+  assert.equal(p1obj.userData.activeClip, 'Walk');
+  // 静止回到 Idle
+  Object.assign(w.p1, { moving: false, state: 'still' });
+  Object.assign(w.p2, { moving: false, state: 'still' });
+  G.Renderer.renderAll();
+  assert.equal(p1obj.userData.activeClip, 'Idle');
+  assert.equal(p2obj.userData.activeClip, 'Idle');
 });
 
 console.log(`\n${checks} regression groups passed. GPU rendering and physical controller not simulated.`);

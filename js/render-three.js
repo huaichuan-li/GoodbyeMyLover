@@ -1,21 +1,24 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
-/* Bundled glTF renderer for downloaded scene props. Logical gameplay stays x/y/floor. */
+/* Bundled glTF renderer: single-floor 3D hospital + animated mummy characters.
+   Logical gameplay stays x/y/floor; w.walls remains the single source for collision/occlusion. */
 (function () {
   var G = window.G;
   if (!G || !G.utils) return;
   var canvas = G.utils.el('game');
   var renderer, scene, cameras = {}, flashlights = {}, floors = {}, entities = {}, builtWorld = null;
-  var hemisphereLight = null, keyLight = null, stairLight = null;
+  var hemisphereLight = null, keyLight = null, corridorLight = null;
   var views = {
     p1: { mode: 'third', yaw: 0, pitch: 0.18, distance: 3.2, dragging: false, lastX: 0, lastY: 0 },
     p2: { mode: 'third', yaw: 0, pitch: 0.18, distance: 3.2, dragging: false, lastX: 0, lastY: 0 }
   };
   var sources = {};
-  var stairwell = null;
-  // 过渡动画状态
-  var floorTransition = { active: false, t: 0, fromFloor: 0, toFloor: 0, fromRole: null };
+  var sceneGLB = null;           // hospital_1f.glb 的场景实例
+  var mummySource = null;        // mummy_animated.glb 的场景源（共享 geo/mat/texture）
+  var mummyClips = {};           // Idle / Walk / Limp_Right
+  var clock = new THREE.Clock();
   var flashEl;
   var assetDefs = {
     // 道具类（已用）
@@ -24,14 +27,11 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     phone: { file: 'prop_phone_nokia.glb', max: 0.18 },
     food: { file: 'prop_food_can.glb', max: 0.16 },
     battery: { file: 'prop_battery_aa.glb', max: 0.15 },
-    // 新增：道具类
     ivCrutch: { file: 'prop_iv_drip_crutch.glb', max: 1.4 },
-    flashlight: { file: 'prop_flashlight_horror.glb', max: 0.22 },
-    // 新增：NPC 模型（替换方块人）
-    npcZombie: { file: 'npc_zombie_hospital.glb', max: 1.8 },
-    npcMummy: { file: 'npc_mummy_stylized.glb', max: 1.8 },
-    npcVampire: { file: 'npc_mummyvamp.glb', max: 1.8 }
+    flashlight: { file: 'prop_flashlight_horror.glb', max: 0.22 }
   };
+  var SCENE_GLB = 'assets/publics/model/hospital_1f.glb';
+  var MUMMY_GLB = 'assets/animated/mummy_animated.glb';
   var mats = {};
   function mat(name, color, roughness) {
     if (!mats[name]) mats[name] = new THREE.MeshStandardMaterial({ color: color, roughness: roughness || 0.85 });
@@ -46,16 +46,59 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     parent.add(mesh);
     return mesh;
   }
-  // 木乃伊基础体（程序化占位）。所有角色共用同一体型，trait 只叠加局部装饰。
-  // 特征与美术文档对应：blueWristband 蓝腕带、darkCoat 深色外层绷带、limpGait 步态（占位不做动画）、
-  // badgeAccessory 银徽章、silverRing 银戒指、scarLeftCheek 左颊疤痕、glassesRound 圆框眼镜、caneDark 深色拐杖。
+  // 木乃伊角色：用 mummy_animated.glb（SkeletonUtils.clone 共享贴图/骨骼），
+  // trait 用轻量网格挂到骨骼 child，随动画摆动。limpGait 用 Limp_Right 动画体现。
+  // 若 GLB 尚未加载完成（或 file:// 下 ESM 未生效），回退到程序化 box 木乃伊。
   var MUMMY_BODY = 0xc8b89a, MUMMY_HEAD = 0xbfae8f;
+  // trait → 挂点骨骼 + 局部位移/尺寸 + 材质名/颜色（坐标为建议值，实机可微调）
+  var TRAIT_RIG = {
+    blueWristband:  { bone: 'forearm.L', pos: [0, -0.05, 0],    size: [0.11, 0.11, 0.13], mat: 'trait-blue',   color: 0x4a8fc9 },
+    darkCoat:       { bone: 'chest',      pos: [0, 0, 0],        size: [0.68, 0.72, 0.62], mat: 'trait-coat',   color: 0x4a4f57 },
+    badgeAccessory: { bone: 'chest',      pos: [0.12, 0.12, 0.33], size: [0.13, 0.13, 0.05], mat: 'trait-badge',  color: 0xc8ccd1 },
+    silverRing:     { bone: 'hand.L',     pos: [0.02, -0.02, 0.04], size: [0.06, 0.06, 0.06], mat: 'trait-ring',   color: 0xd8dde2 },
+    scarLeftCheek:  { bone: 'head',       pos: [-0.2, 0.05, 0.25], size: [0.1, 0.02, 0.02],  mat: 'trait-scar',   color: 0xe6dcc8 },
+    glassesRound:   { bone: 'head',       pos: [0, 0.06, 0.27],   size: [0.36, 0.1, 0.03],  mat: 'trait-glass',  color: 0x2a3238 },
+    caneDark:       { bone: 'hand.R',     pos: [0.05, -0.45, 0.02], size: [0.05, 0.9, 0.05], mat: 'trait-cane',   color: 0x3b2a1e }
+  };
+  function attachTraitProps(avatar, traits) {
+    (traits || []).forEach(function (t) {
+      var def = TRAIT_RIG[t];
+      if (!def) return; // limpGait 无挂件，用动画体现
+      var bone = avatar.getObjectByName(def.bone);
+      if (!bone) return;
+      var m = new THREE.Mesh(new THREE.BoxGeometry(def.size[0], def.size[1], def.size[2]), mat(def.mat, def.color));
+      m.name = 'trait-' + t;
+      m.position.set(def.pos[0], def.pos[1], def.pos[2]);
+      m.castShadow = false;
+      bone.add(m);
+    });
+  }
   function buildMummyBody(group, id, traits) {
+    if (mummySource) {
+      var avatar = cloneSkinned(mummySource);
+      avatar.name = 'mummy-avatar';
+      group.add(avatar);
+      attachTraitProps(avatar, traits);
+      var mixer = new THREE.AnimationMixer(avatar);
+      var actions = {};
+      Object.keys(mummyClips).forEach(function (name) {
+        var action = mixer.clipAction(mummyClips[name]);
+        action.loop = THREE.LoopRepeat;
+        actions[name] = action;
+      });
+      group.userData.mixer = mixer;
+      group.userData.actions = actions;
+      group.userData.activeClip = null;
+      group.userData.traits = (traits || []).slice();
+      // 统一站立动作起手；每帧由 tickAvatars 根据 state 切换。
+      if (actions['Idle']) actions['Idle'].play();
+      return;
+    }
+    // ---- 程序化回退（GLB 未就绪）----
     box(group, 'body', [0, 0.7, 0], [0.62, 1.25, 0.58], mat('mummy-body-' + id, MUMMY_BODY));
     box(group, 'head', [0, 1.55, 0], [0.52, 0.52, 0.52], mat('mummy-head-' + id, MUMMY_HEAD));
     box(group, 'leg-l', [-0.15, 0.25, 0], [0.18, 0.55, 0.18], mat('mummy-leg-' + id, MUMMY_BODY));
     box(group, 'leg-r', [0.15, 0.25, 0], [0.18, 0.55, 0.18], mat('mummy-leg-r-' + id, MUMMY_BODY));
-    // 绷带横纹（所有木乃伊都有，程序化示意缠绕感）
     box(group, 'wrap-1', [0, 0.95, 0.31], [0.64, 0.05, 0.02], mat('wrap-line', 0x9c8c6e));
     box(group, 'wrap-2', [0, 0.55, 0.31], [0.64, 0.05, 0.02], mat('wrap-line', 0x9c8c6e));
     if (traits.indexOf('blueWristband') >= 0) box(group, 'trait-blueWristband', [-0.36, 0.9, 0], [0.12, 0.12, 0.6], mat('trait-blue', 0x4a8fc9));
@@ -65,7 +108,6 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     if (traits.indexOf('scarLeftCheek') >= 0) box(group, 'trait-scar', [-0.2, 1.58, 0.27], [0.1, 0.02, 0.02], mat('trait-scar', 0xe6dcc8));
     if (traits.indexOf('glassesRound') >= 0) box(group, 'trait-glasses', [0, 1.6, 0.27], [0.36, 0.1, 0.03], mat('trait-glasses', 0x2a3238, 0.4));
     if (traits.indexOf('caneDark') >= 0) box(group, 'trait-cane', [0.4, 0.5, 0.1], [0.06, 1.0, 0.06], mat('trait-cane', 0x3b2a1e));
-    // limpGait 是动作差异，占位阶段不做动画，仅在右腿略短体现。
     if (traits.indexOf('limpGait') >= 0) group.getObjectByName('leg-r') && (group.getObjectByName('leg-r').position.y = 0.2);
   }
   function assetInstance(id) {
@@ -75,10 +117,17 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     obj.traverse(function (child) { if (child.isMesh) { child.castShadow = false; child.receiveShadow = true; } });
     return obj;
   }
+  var loadPending = 0;
+  function loadDone() {
+    loadPending = Math.max(0, loadPending - 1);
+    if (loadPending === 0) window.dispatchEvent(new Event('hospital-models-ready'));
+  }
   function loadAssets() {
     var loader = new GLTFLoader();
+    // 1) 道具类
     Object.keys(assetDefs).forEach(function (id) {
       var def = assetDefs[id];
+      loadPending++;
       loader.load('assets/publics/model/sketchfab/' + def.file, function (gltf) {
         var model = gltf.scene;
         model.updateMatrixWorld(true);
@@ -96,177 +145,115 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         normalized.userData.sourceBounds = { x: size.x, y: size.y, z: size.z };
         sources[id] = normalized;
         if (builtWorld) buildWorld(builtWorld);
+        loadDone();
       }, undefined, function (err) {
         console.warn('[GLB] could not load ' + def.file + '; using procedural fallback.', err);
+        loadDone();
       });
     });
-  }
-
-  /* ========== 楼梯几何构建 ========== */
-  function buildStairwell() {
-    var group = new THREE.Group();
-    group.name = 'stairwell-core';
-    var stairMat = mat('stair', 0x5a656c, 0.4);
-    var railMat = mat('rail', 0x8a959c, 0.3);
-    var pipeMat = mat('pipe', 0x606b72, 0.7);
-
-    // 楼梯井：四层共用，从 -1.5 到 14.7 的 Y 空间
-    // 楼梯位置在 (11.9, *, 0)，南北走向
-    // 楼梯占 X: 10.5~13.3, Z: -1.6~1.6 的空间
-
-    // === 一楼→二楼 楼梯 (floor 1→2, base 0→4.2) ===
-    // 从 base-0.22 爬升到 base+4.2
-    var stair1 = new THREE.Group();
-    stair1.name = 'stair-1to2';
-    // 底层平台
-    box(stair1, 'landing-1', [11.9, 0.05, 0], [2.8, 0.1, 3.2], stairMat);
-    // 12 级台阶，从 y=0.15 到 y=3.85
-    var steps = 12;
-    for (var i = 0; i < steps; i++) {
-      var stepY = 0.15 + i * 0.308;
-      var stepZ = -1.6 + i * (3.2 / steps);
-      box(stair1, 'step-1-' + i, [11.9, stepY + 0.08, stepZ + (3.2 / steps) / 2], [2.8, 0.16, 3.2 / steps], stairMat);
-    }
-    // 顶层平台
-    box(stair1, 'landing-2', [11.9, 4.15, 1.6], [2.8, 0.1, 0.6], stairMat);
-    // 扶手 - 西侧
-    for (var j = 0; j <= steps; j++) {
-      var railY = 0.35 + j * 0.308;
-      var railZ = -1.6 + j * (3.2 / steps);
-      box(stair1, 'rail-p1-' + j, [10.55, railY + 0.95, railZ], [0.08, 0.06, 0.1], railMat); // 立柱
-    }
-    // 扶手上横杆
-    var railLine1 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 3.2), railMat);
-    railLine1.position.set(10.55, 0.35 + 12 * 0.308 * 0.5 + 0.95, 0);
-    railLine1.rotation.y = Math.atan2(3.2, 12 * 0.308);
-    railLine1.rotation.x = -Math.atan2(3.2 / steps, 0.308);
-    stair1.add(railLine1);
-    // 扶手 - 东侧
-    var railLine2 = railLine1.clone();
-    railLine2.position.x = 13.25;
-    railLine2.rotation.copy(railLine1.rotation);
-    stair1.add(railLine2);
-    for (var k = 0; k <= steps; k++) {
-      var railY2 = 0.35 + k * 0.308;
-      var railZ2 = -1.6 + k * (3.2 / steps);
-      box(stair1, 'rail-p2-' + k, [13.25, railY2 + 0.95, railZ2], [0.08, 0.06, 0.1], railMat);
-    }
-    // 楼梯平台下的支撑柱
-    box(stair1, 'support-1', [10.55, 0, -1.2], [0.15, 4.2, 0.15], pipeMat);
-    box(stair1, 'support-2', [13.25, 0, -1.2], [0.15, 4.2, 0.15], pipeMat);
-
-    // === 二楼→三楼 楼梯 (floor 2→3, base 4.2→8.4) ===
-    var stair2 = new THREE.Group();
-    stair2.name = 'stair-2to3';
-    var stair2Offset = 1.8; // 往东边偏移一点，避免与下楼梯重叠
-    // 底层平台（从二楼走廊进入）
-    box(stair2, 'landing-3', [11.9, 4.25, -1.6 - stair2Offset], [2.8, 0.1, 0.6], stairMat);
-    // 上楼梯
-    for (var s = 0; s < steps; s++) {
-      var sY = 4.35 + s * 0.308;
-      var sZ = -1.6 - stair2Offset + s * (3.2 / steps);
-      box(stair2, 'step-2-' + s, [11.9, sY + 0.08, sZ + (3.2 / steps) / 2], [2.8, 0.16, 3.2 / steps], stairMat);
-    }
-    // 顶层平台
-    box(stair2, 'landing-4', [11.9, 8.35, 1.6 - stair2Offset], [2.8, 0.1, 0.6], stairMat);
-    // 扶手
-    var railLine3 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 3.2), railMat);
-    railLine3.position.set(10.55, 4.35 + 12 * 0.308 * 0.5 + 0.95, -1.6 - stair2Offset + 1.6);
-    railLine3.rotation.x = -Math.atan2(3.2 / steps, 0.308);
-    stair2.add(railLine3);
-    var railLine4 = railLine3.clone();
-    railLine4.position.x = 13.25;
-    railLine4.rotation.copy(railLine3.rotation);
-    stair2.add(railLine4);
-
-    // === 三楼→四楼楼梯 ===
-    // 三楼到四楼沿用二楼→三楼的几何与朝向，整体上移一个楼层高度。
-    // 这样四层逻辑楼梯与画面中的楼梯井保持一致，后续切层时不会出现悬空入口。
-    var stair3 = stair2.clone(true);
-    stair3.name = 'stair-3to4';
-    stair3.position.y = 4.2;
-
-    group.add(stair1);
-    group.add(stair2);
-    group.add(stair3);
-    return group;
+    // 2) 医院场景 GLB（WALL_ 前缀结构件在运行时隐藏，墙仍由 w.walls 程序化生成）
+    loadPending++;
+    loader.load(SCENE_GLB, function (gltf) {
+      var model = gltf.scene;
+      model.traverse(function (o) {
+        if (o.isMesh && /^WALL_/.test(o.name)) o.visible = false;
+        if (o.isMesh) {
+          o.castShadow = false; o.receiveShadow = true;
+          o.raycast = function () {}; // 场景装饰不参与相机避障射线，遮挡仍由 w.walls + 程序化几何决定
+        }
+      });
+      // 归一化到逻辑足迹 X∈[0,24]、Z∈[-4.9,4.9]、底面 y=0，锚点 (12,0,0)
+      model.updateMatrixWorld(true);
+      var bounds = new THREE.Box3().setFromObject(model);
+      var size = bounds.getSize(new THREE.Vector3());
+      var center = bounds.getCenter(new THREE.Vector3());
+      var sx = 24 / (size.x || 1), sz = 10 / (size.z || 1);
+      var s = Math.min(sx, sz);
+      var normalized = new THREE.Group();
+      var anchor = new THREE.Group();
+      anchor.add(model);
+      anchor.scale.setScalar(s);
+      anchor.position.set(12 - center.x * s, -bounds.min.y * s, 0 - center.z * s);
+      normalized.add(anchor);
+      normalized.userData.sourceBounds = { x: size.x, y: size.y, z: size.z };
+      sceneGLB = normalized;
+      if (builtWorld) buildWorld(builtWorld);
+      loadDone();
+    }, undefined, function (err) {
+      console.warn('[GLB] hospital scene failed; using procedural room.', err);
+      loadDone();
+    });
+    // 3) 木乃伊动画角色 GLB（共享 geo/mat/texture，仅 clone 骨骼层级）
+    loadPending++;
+    loader.load(MUMMY_GLB, function (gltf) {
+      var model = gltf.scene;
+      model.updateMatrixWorld(true);
+      var bounds = new THREE.Box3().setFromObject(model);
+      var size = bounds.getSize(new THREE.Vector3());
+      var scale = 1.8 / (size.y || 1);
+      model.scale.setScalar(scale);
+      model.position.set(0, -bounds.min.y * scale, 0);
+      // 归一化贴图：避免 mipmap 生成开销，保持共享
+      model.traverse(function (o) {
+        if (o.isMesh) {
+          o.material = o.material; // 共享，禁止 clone
+          o.castShadow = true; o.receiveShadow = true;
+          var maps = ['map','normalMap','metalnessMap','roughnessMap'];
+          maps.forEach(function (k) { if (o.material && o.material[k]) o.material[k].generateMipmaps = false; });
+        }
+      });
+      mummySource = model;
+      (gltf.animations || []).forEach(function (c) { mummyClips[c.name] = c; });
+      // GLB 就绪后重建世界，让已有实体从 box 占位升级为动画模型
+      if (builtWorld) buildWorld(builtWorld);
+      loadDone();
+    }, undefined, function (err) {
+      console.warn('[GLB] animated mummy failed; using procedural mummy.', err);
+      loadDone();
+    });
   }
 
   /* ========== 楼层房间构建 ========== */
   function floorRoom(w, f) {
+    var base = 0; // 单层：所有几何落在 y=0 基面
     var group = new THREE.Group();
-    var base = (f - 1) * 4.2;
     group.name = 'hospital-floor-' + f;
     floors[f] = group;
     scene.add(group);
 
-    // 完整医院 GLB 的门墙与逻辑布局不同，保留在资产预览台供后续搭建使用。
-    // 可玩区域的墙统一从 w.walls 生成，确保画面、人物碰撞和镜头遮挡一致。
+    // 医院场景 GLB：提供家具/器械/氛围。其 WALL_ 前缀结构件已隐藏，
+    // 实体墙统一由 w.walls 程序化生成，确保画面/碰撞/镜头遮挡/手电判定一致。
+    if (sceneGLB) group.add(sceneGLB);
 
-    // 地板
-    box(group, 'floor', [12, base - 0.22, 0], [26, 0.4, 11], mat('floor', 0x46545c));
-    // 边界墙
+    // 地板（略低于 GLB 地面，避免 z-fighting）
+    box(group, 'floor', [12, base - 0.24, 0], [26, 0.4, 11], mat('floor', 0x46545c));
     var wall = mat('wall', 0x27323a);
     var trim = mat('trim', 0x59656c);
+    // 边界墙
     box(group, 'north-wall', [12, base + 2.5, -5.45], [26, 5, 0.3], wall);
     box(group, 'south-wall', [12, base + 2.5, 5.45], [26, 5, 0.3], wall);
     box(group, 'west-wall', [-1, base + 2.5, 0], [0.3, 5, 11], wall);
     box(group, 'east-wall', [25, base + 2.5, 0], [0.3, 5, 11], wall);
-    // 天花板装饰条
-    for (var i = 0; i < 12; i++) {
-      box(group, 'ceiling-trim-' + i, [1 + i * 2.05, base + 4.8, 0], [0.08, 0.08, 10.5], trim);
-    }
-    // 走廊顶灯（三排）
+    // 天花板装饰条 + 走廊顶灯
+    for (var i = 0; i < 12; i++) box(group, 'ceiling-trim-' + i, [1 + i * 2.05, base + 4.8, 0], [0.08, 0.08, 10.5], trim);
     var lightMat = mat('light', 0xc8d4d8, 0.1);
-    for (var i2 = 0; i2 < 6; i2++) {
-      box(group, 'ceiling-light-' + i2, [4 + i2 * 3.4, base + 4.9, 0], [1.6, 0.08, 0.4], lightMat);
-    }
-    // 墙壁上的分割
+    for (var i2 = 0; i2 < 6; i2++) box(group, 'ceiling-light-' + i2, [4 + i2 * 3.4, base + 4.9, 0], [1.6, 0.08, 0.4], lightMat);
+    // 逻辑墙（唯一碰撞/遮挡真源）
     w.walls.forEach(function (b) {
       if (b.floor !== f) return;
       box(group, b.kind || 'partition', [(b.x + b.w / 2) / 100, base + 1.75, (b.y + b.h / 2) / 100 - 4.9], [b.w / 100, 3.5, b.h / 100], trim);
     });
-    // 科室标识牌
+    // 科室标识牌（单层 4 个科室）
     G.Level.departments[f].forEach(function (_name, i) {
-      var x = f === 1 ? (i ? 18.8 : 4.2) : 4.2 + i * 3.5;
-      box(group, 'department-sign', [x, base + 3.8, -4.9], [2.25, 0.48, 0.08], mat('sign', 0x58696b));
+      box(group, 'department-sign', [i ? 18.8 : 4.2, base + 3.8, -4.9], [2.25, 0.48, 0.08], mat('sign', 0x58696b));
     });
-
-    // === 楼层间连接：楼梯门和电梯门 ===
-    // 楼梯入口保留地面标记；门墙由逻辑布局生成，避免装饰门柱占住出生点和通道。
-    var doorFrameMat = mat('doorframe', 0x3a454d);
-    // 楼梯间地面开口（用深色地板表示）
-    box(group, 'stair-opening', [11.9, base - 0.1, 0], [2.8, 0.02, 3.2], mat('hole', 0x080c10));
-    // 扶手栏 (楼梯入口两侧)
-    box(group, 'railing-N', [11.9, base + 0.95, -1.6], [2.8, 0.06, 0.06], trim);
-    box(group, 'railing-S', [11.9, base + 0.95, 1.6], [2.8, 0.06, 0.06], trim);
-    // 立柱
-    box(group, 'post-NL', [10.55, base + 0.5, -1.6], [0.06, 0.95, 0.06], trim);
-    box(group, 'post-NR', [13.25, base + 0.5, -1.6], [0.06, 0.95, 0.06], trim);
-    box(group, 'post-SL', [10.55, base + 0.5, 1.6], [0.06, 0.95, 0.06], trim);
-    box(group, 'post-SR', [13.25, base + 0.5, 1.6], [0.06, 0.95, 0.06], trim);
-
-    // 电梯井（在另一侧）
-    var elevatorX = 22.5;
-    box(group, 'elevator-frame', [elevatorX, base + 1.8, -1], [1.8, 3.2, 2.2], doorFrameMat);
-    box(group, 'elevator-opening', [elevatorX, base + 1.8, -0.6], [1.2, 3.0, 0.05], mat('elevator', 0x1a2228));
-    // 电梯按钮
-    box(group, 'elevator-btn', [elevatorX + 0.9, base + 2.0, 0.1], [0.15, 0.15, 0.05], mat('elevator-btn', 0xc8a15a));
-    // 楼层数字指示
-    var numColor = f === 1 ? 0x4ab1c8 : (f === 2 ? 0xd0c6ae : 0x6f8a91);
-    box(group, 'floor-indicator', [elevatorX - 0.4, base + 3.4, -0.6], [0.3, 0.2, 0.02], mat('indicator', numColor));
-
-    // === 墙上的走廊标识和装饰 ===
+    // 走廊标识 / 灭火器 / 疏散指示牌 / 警示线
     box(group, 'corridor-sign', [6, base + 2.8, -5.3], [1.4, 0.25, 0.05], mat('corridor-sign', 0x5a6770));
     box(group, 'corridor-sign2', [18, base + 2.8, -5.3], [1.4, 0.25, 0.05], mat('corridor-sign2', 0x5a6770));
-    // 灭火器（靠墙）
     box(group, 'fire-extinguisher-1', [1, base + 0.9, 3], [0.2, 0.6, 0.2], mat('extinguisher', 0xb4453c));
     box(group, 'fire-extinguisher-2', [23, base + 0.9, -3], [0.2, 0.6, 0.2], mat('extinguisher2', 0xb4453c));
-    // 墙上的疏散指示牌（发光）
     box(group, 'exit-sign-1', [3, base + 3.0, 5.3], [0.6, 0.2, 0.02], mat('exit', 0x3ddc84));
     box(group, 'exit-sign-2', [22, base + 3.0, -5.3], [0.6, 0.2, 0.02], mat('exit2', 0x3ddc84));
-
-    // === 走廊地板警示线 ===
     var warnMat = mat('warning', 0xc8a15a, 0.6);
     box(group, 'warn-line-1', [11.9, base - 0.21, 3.5], [3.5, 0.01, 0.08], warnMat);
     box(group, 'warn-line-2', [11.9, base - 0.21, -3.5], [3.5, 0.01, 0.08], warnMat);
@@ -276,8 +263,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
   }
 
   function addFurniture(group, f, base) {
-    // 病床（二楼三楼）
-    if (f > 1) {
+    // 病床（单层医院也布置病床）
+    {
       [[10.0, -1.3, 0], [17.0, 1.0, Math.PI], [5.5, -2.5, Math.PI / 2], [20.0, 2.5, -Math.PI / 3]].forEach(function (p, i) {
         var bed = assetInstance('bed');
         if (bed) {
@@ -342,9 +329,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     } else if (e.kind === 'npc') {
       buildMummyBody(group, e.id, e.traits || []);
     } else if (e.kind === 'zombie') {
+      // 感染者：略大的体型 + 头顶红色标记；不改共享材质（避免污染其它角色的贴图）
       buildMummyBody(group, e.id, ['scarLeftCheek']);
-      group.scale.set(1.15,1.15,1.15);
-      group.traverse(function(n){if(n.material)n.material=n.material.clone(),n.material.color.setHex(0x8d3c42);});
+      group.scale.set(1.15, 1.15, 1.15);
+      box(group, 'zombie-mark', [0, 2.02, 0], [0.16, 0.16, 0.16], mat('zombie-mark', 0x8d3c42, 0.5));
     } else if (e.kind === 'phone') {
       var model = assetInstance('phone');
       if (model) {
@@ -369,14 +357,6 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
       box(group, 'clue-glow', [0, 0.86, 0], [0.36, 0.01, 0.28], mat('clue-glow', 0xffd68a));
       box(group, 'clue-edge-1', [0, 0.865, -0.14], [0.34, 0.01, 0.01], mat('clue-edge', 0xc8a15a));
       box(group, 'clue-edge-2', [0, 0.865, 0.14], [0.34, 0.01, 0.01], mat('clue-edge2', 0xc8a15a));
-    } else if (e.kind === 'stairs') {
-      // 楼梯标志 - 发光箭头
-      var arrowColor = e.direction === 'UP' ? 0x3ddc84 : 0x6f8a91;
-      box(group, 'stairs-marker', [0, 0.22, 0], [1.4, 0.45, 1.4], mat('stairs-marker', 0x899197));
-      // 箭头指示
-      box(group, 'stairs-arrow', [0, 0.48, 0], [0.6, 0.02, 0.25], mat('stairs-arrow', arrowColor));
-      // 楼层标签
-      box(group, 'stairs-label', [0, 0.52, 0], [0.5, 0.02, 0.02], mat('stairs-label', arrowColor));
     } else if (e.kind === 'exit') {
       box(group,'exit-frame',[0,1.1,0],[1.2,2.2,.18],mat('exit-frame',0x3ddc84));
       box(group,'exit-glow',[0,2.1,0],[.75,.18,.04],mat('exit-glow',0x9effba));
@@ -387,11 +367,17 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     // P0: 预挂边缘高亮 outline mesh（薄壳，不是大方块）
     // 外壳按物体实际包围盒生成：每个方向向外多出物体该方向尺寸的 1/10
     var OUTLINE_RATIO = 0.1, OUTLINE_MIN = 0.01;
-    group.updateMatrixWorld(true);
-    var bbox = new THREE.Box3().setFromObject(group);
     var bsize = new THREE.Vector3(), bcenter = new THREE.Vector3();
-    if (bbox.isEmpty()) { bsize.set(1, 1.8, 1); bcenter.set(0, 0.9, 0); }
-    else { bbox.getSize(bsize); bbox.getCenter(bcenter); }
+    var isActor = (e.kind === 'player' || e.kind === 'npc' || e.kind === 'zombie');
+    if (isActor && mummySource) {
+      // 骨骼动画中 Box3 会随姿态抖动，角色用固定代理盒
+      bsize.set(0.85, 1.9, 0.85); bcenter.set(0, 0.95, 0);
+    } else {
+      group.updateMatrixWorld(true);
+      var bbox = new THREE.Box3().setFromObject(group);
+      if (bbox.isEmpty()) { bsize.set(1, 1.8, 1); bcenter.set(0, 0.9, 0); }
+      else { bbox.getSize(bsize); bcenter = bbox.getCenter(bcenter); }
+    }
     var outlineGeo = new THREE.BoxGeometry(
       bsize.x + 2 * Math.max(bsize.x * OUTLINE_RATIO, OUTLINE_MIN),
       bsize.y + 2 * Math.max(bsize.y * OUTLINE_RATIO, OUTLINE_MIN),
@@ -418,25 +404,11 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     Object.keys(floors).forEach(function (f) { scene.remove(floors[f]); });
     Object.keys(entities).forEach(function (id) { scene.remove(entities[id]); });
     floors = {}; entities = {};
-    // 楼层房间
-    [1, 2, 3, 4].forEach(function (f) { floorRoom(w, f); });
-    // 贯穿四层的楼梯井核心
-    if (stairwell) scene.remove(stairwell);
-    stairwell = buildStairwell();
-    scene.add(stairwell);
+    // 单层医院
+    floorRoom(w, 1);
     // 实体
     w.entities.forEach(function (e) { var obj = entityObject(e); scene.add(obj); });
     builtWorld = w;
-  }
-
-  /* ========== 楼层过渡动画 ========== */
-  function triggerFloorTransition(fromRole, fromFloor, toFloor) {
-    if (!flashEl) flashEl = G.utils.el('flash');
-    floorTransition = { active: true, t: 0, fromFloor: fromFloor, toFloor: toFloor, fromRole: fromRole };
-    // 淡入效果
-    flashEl.style.transition = 'opacity 0.3s';
-    flashEl.style.opacity = '1';
-    flashEl.style.background = '#000';
   }
 
   /* ========== 相机视角 ========== */
@@ -487,11 +459,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     var offsets = [[0, 0, 0], [0.12, 0, 0], [-0.12, 0, 0], [0, 0.12, 0], [0, -0.12, 0]];
     if (floors[floor]) {
       floors[floor].updateMatrixWorld(true);
-      if (stairwell) stairwell.updateMatrixWorld(true);
       offsets.forEach(function (offset) {
         var origin = new THREE.Vector3(pivot.x + offset[0], pivot.y + offset[1], pivot.z + offset[2]);
         var ray = new THREE.Raycaster(origin, direction, 0, length);
-        var intersections = ray.intersectObjects(stairwell ? [floors[floor], stairwell] : [floors[floor]], true);
+        var intersections = ray.intersectObjects([floors[floor]], true);
         if (intersections.length) hit = Math.min(hit, intersections[0].distance / length);
       });
     }
@@ -651,7 +622,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
       }
     });
 
-    // 只有当前楼层可见，楼梯井始终可见（贯穿各层）
+    // 单层：只需显示 1F 房间组
     Object.keys(floors).forEach(function (f) {
       floors[f].visible = Number(f) === player.floor;
     });
@@ -666,8 +637,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     });
 
     // P0: 边缘高亮——给玩家最近的可交互物体描发光边
-    var interactableKinds = { stairs: 1, clue: 1, phone: 1, food: 1, medicine:1, exit:1, battery: 1, npc: 1 };
-    var hiliteColor = { stairs: 0x4ddd84, clue: 0xffd68a, phone: 0x6ad9c8, food: 0x99d477, medicine:0xff786b, exit:0x6dff9a, battery: 0x99d477, npc: 0xff7a6a, player: 0x8aa9e8 };
+    var interactableKinds = { clue: 1, phone: 1, food: 1, medicine:1, exit:1, battery: 1, npc: 1 };
+    var hiliteColor = { clue: 0xffd68a, phone: 0x6ad9c8, food: 0x99d477, medicine:0xff786b, exit:0x6dff9a, battery: 0x99d477, npc: 0xff7a6a, player: 0x8aa9e8 };
     var nearest = null, nearestDist = Infinity;
     w.entities.forEach(function (e) {
       if (!interactableKinds[e.kind]) return;
@@ -694,10 +665,37 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     renderer.render(scene, camera);
   }
 
+  // 每帧推进角色动画（只在这里 tick 一次，分屏 view() 不重复）。
+  function tickAvatars(w) {
+    if (!w) return;
+    var dt = Math.min(clock.getDelta(), 0.05);
+    w.entities.forEach(function (e) {
+      var obj = entities[e.id];
+      if (!obj || !obj.userData.mixer || !obj.userData.actions) return;
+      var actions = obj.userData.actions;
+      var traits = obj.userData.traits || e.traits || [];
+      var moving = !!e.moving;
+      var target;
+      if (traits.indexOf('limpGait') >= 0 && moving) target = 'Limp_Right';
+      else if (e.state === 'slowRun') target = 'Walk';
+      else if ((e.state === 'walk' || e.state === 'wander') && moving) target = 'Walk';
+      else target = 'Idle';
+      if (actions[target] && obj.userData.activeClip !== target) {
+        var prev = obj.userData.activeClip && actions[obj.userData.activeClip];
+        if (prev) prev.fadeOut(0.25);
+        actions[target].reset().fadeIn(0.25).play();
+        actions[target].timeScale = (e.state === 'slowRun') ? 1.35 : 1;
+        obj.userData.activeClip = target;
+      }
+      obj.userData.mixer.update(dt);
+    });
+  }
+
   function renderAll() {
     if (!renderer) init();
     var w = G.Game.world;
     if (w && builtWorld !== w) buildWorld(w);
+    tickAvatars(w);
     renderer.clear(true, true, true);
     if (!w) return;
     // 调试明亮模式只提高环境照明与曝光，保留墙体碰撞、遮挡和手电逻辑。
@@ -705,7 +703,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     var bright=!!w.brightMode;
     if(hemisphereLight)hemisphereLight.intensity=bright?1.15:0.12;
     if(keyLight)keyLight.intensity=bright?0.72:0.04;
-    if(stairLight)stairLight.intensity=bright?0.9:0.5;
+    if(corridorLight)corridorLight.intensity=bright?0.9:0.5;
     renderer.toneMappingExposure=bright?1.15:0.9;
     if(scene.background)scene.background.setHex(bright?0x4b565d:0x111a21);
     if(scene.fog)scene.fog.color.setHex(bright?0x4b565d:0x111a21);
@@ -715,15 +713,6 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
       view(w, window.innerWidth / 2, window.innerWidth / 2, 'p2');
     } else {
       view(w, 0, window.innerWidth, 'p1');
-    }
-
-    // 过渡动画淡出
-    if (floorTransition.active && flashEl) {
-      floorTransition.t += 1 / 60;
-      if (floorTransition.t > 0.35) {
-        flashEl.style.opacity = '0';
-        floorTransition.active = false;
-      }
     }
   }
 
@@ -751,10 +740,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     keyLight.position.set(-8, 16, 10);
     keyLight.intensity = 0.04;
     scene.add(keyLight);
-    // 楼梯间环境光（贯穿各层）
-    stairLight = new THREE.PointLight(0x4ab1c8, 0.5, 20);
-    stairLight.position.set(11.9, 4.2, 0);
-    scene.add(stairLight);
+    // 走廊中部环境补光（单层，提供冷暖对比）
+    corridorLight = new THREE.PointLight(0x4ab1c8, 0.5, 20);
+    corridorLight.position.set(11.9, 4.2, 0);
+    scene.add(corridorLight);
     ['p1', 'p2'].forEach(function (id) {
       cameras[id] = new THREE.PerspectiveCamera(60, 1, 0.06, 80);
       scene.add(cameras[id]);
@@ -775,11 +764,6 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     installMouseCamera();
     window.addEventListener('resize', resize);
     loadAssets();
-    // 监听楼层变化以触发过渡动画
-    document.addEventListener('hospital-renderer-ready', function () {
-      // 暴露过渡函数给 game 逻辑
-      G.Renderer.triggerFloorTransition = triggerFloorTransition;
-    });
   }
 
   function resize() {

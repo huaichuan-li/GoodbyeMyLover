@@ -199,3 +199,10 @@ body.present #game{filter:contrast(1.12) brightness(1.16)}
 @media(max-width:600px){.debug-card-panel{padding:0 4px}.debug-card-grid{gap:4px}.debug-card-choice{min-height:68px}.debug-card-choice span{font-size:10px}.debug-card-choice small{font-size:8px}.debug-card-result{min-height:88px}}
 @media(max-width:600px){.wheel-split{gap:8px}.wheel-panel{--wheel-size:clamp(130px,37vw,205px);padding:0 5px}.card.roulette-card{padding:12px 5px}.wheel-player{font-size:13px}.wheel-player small{display:block;margin:4px 0}.wheel-label{font-size:10px}.wheel-action{font-size:11px}.wheel-result{min-height:125px}.wheel-result h3{font-size:15px}}
 @media(max-height:720px) and (min-width:601px){.wheel-panel{--wheel-size:230px}.wheel-result{min-height:80px}.wheel-split{margin-top:8px}.wheel-player{margin-bottom:12px}.roulette-intro p{margin:0}.wheel-footer{margin:4px 0!important}}
+
+/* 模型加载遮罩：GLB 就绪或超时后由 boot.js 淡出 */
+.loading{position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at center,#0d141a 0%,#05080b 80%);pointer-events:none}
+.loading-inner{text-align:center;color:#c8d4d8;font-size:15px;letter-spacing:.28em;
+  text-shadow:0 0 18px rgba(120,160,175,.35)}
+.loading-inner small{display:block;margin-top:12px;font-size:10px;letter-spacing:.2em;color:#708790}

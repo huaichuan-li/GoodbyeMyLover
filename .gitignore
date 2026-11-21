@@ -2,3 +2,16 @@
 .workbuddy/
 .DS_Store
 node_modules/
+
+# 资产制作源文件与 QA 预览不入库（运行时只需 GLB）
+assets/animated/*.blend
+assets/animated/*.blend1
+assets/animated/previews/
+assets/animated/source/
+assets/hospital_1f.blend
+
+# 临时调试脚本与外部工具产物不入库
+tools/_*.mjs
+tools/mira_scene_colab.ipynb
+.trae-html-share-packages/
+场景汇总/

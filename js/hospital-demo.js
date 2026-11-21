@@ -17,15 +17,15 @@
   }
   function actor(w,id){return id==='p1'?w.p1:w.p2;}
   function publish(w,to,text){var target=actor(w,to);target.inbox.unshift({text:text,at:w.time});target.inbox=target.inbox.slice(0,5);}
-  function floorValid(f){return f>=1&&f<=4;}
+  function floorValid(f){return f===1;}
   function nearest(w,p,role,submit){
     var best=null,bd=C.npc.pickupRadius;
-    var allowed=submit?{npc:1,player:1}:{stairs:1,clue:1,phone:1,food:1,medicine:1,exit:1,npc:1,player:1};
+    var allowed=submit?{npc:1,player:1}:{clue:1,phone:1,food:1,medicine:1,exit:1,npc:1,player:1};
     w.entities.forEach(function(e){
       if(!e.alive||e.floor!==p.floor||e.id===p.id||!allowed[e.kind])return;
       if(submit&&e.kind!=='npc'&&e.kind!=='player')return;
       if(e.role&&e.role!==role&&e.kind!=='player')return;
-      var d=dist(e,p),priority=e.kind==='stairs'?0.72:(e.kind==='player'?0.55:(e.kind==='npc'?0.82:1));
+      var d=dist(e,p),priority=e.kind==='player'?0.55:(e.kind==='npc'?0.82:1);
       if(G.Renderer.canSee && !G.Renderer.canSee(w,p,e))return;
       if(d*priority<bd){best=e;bd=d*priority;}
     });
@@ -163,9 +163,9 @@
     });
   }
 
-  // ========== P0-2: 观察约束系统（次数限制 + 隐身条件 + 楼层差异） ==========
+  // ========== P0-2: 观察约束系统（次数限制 + 隐身条件） ==========
   // 核心设计：
-  //   1) 每个 NPC 有观察次数上限（三楼=1次，一二楼=2次），超过后 NPC 警觉走开
+  //   1) 每个 NPC 有观察次数上限（单层统一 2 次），超过后 NPC 警觉走开
   //   2) 玩家连续站立不动 2 秒以上进入"隐身"状态：观察成功率 100%
   //      非隐身状态下成功率 40%，容易被 NPC 发现（NPC 会 flee）
   //   3) 成功观察 → 揭示一个特征，同时告诉对方"我发现了关于 NPC 的事"
@@ -183,7 +183,7 @@
     // 该 NPC 已经被这个玩家观察过几次
     var key='obs_'+role;
     npc[key]=(npc[key]||0);
-    var maxObs=npc.floor===3?1:2; // 三楼 NPC 更敏感
+    var maxObs=2; // 单层：所有 NPC 观察上限一致
     if(npc[key]>=maxObs){
       // 超过上限 → NPC 警觉走开
       p.notice='这个人注意到你在盯着他，转身离开了。';
@@ -214,7 +214,7 @@
       p.noticeUntil=w.time+2.5;
       // P1-2: 自动通知对方你发现了什么
       var other=role==='p1'?'p2':'p1';
-      publish(w,other,'我在'+roomAt(p)+'看到一个 NPC 可能有 '+TRAIT_INFO[t].label+'，位置约 (楼层'+p.floor+')');
+      publish(w,other,'我在'+roomAt(p)+'看到一个 NPC 可能有 '+TRAIT_INFO[t].label+'，留意走廊里的可疑目标');
     }else{
       p.notice='这个人没什么更多特征可以看了。';
       p.noticeUntil=w.time+1.5;
@@ -224,6 +224,28 @@
   // ========== 互动系统 ==========
   function end(w,key){if(w.ended)return;w.ended=true;w.ending=key;G.State.set('RESULT');if(G.Audio&&G.Audio.stopAmbient)G.Audio.stopAmbient();G.UI.overlay('ending',key);}
 
+  function recognizePartner(w,role,p){
+    var otherRole=role==='p1'?'p2':'p1';
+    var other=actor(w,otherRole);
+    if(p.floor!==other.floor||dist(p,other)>300)return false;
+    var rec=w.recognition||(w.recognition={state:'idle',startedAt:0,expiresAt:0,initiator:null,participants:{}});
+    if(rec.state==='active'&&rec.expiresAt<w.time){
+      rec.state='idle';rec.participants={};
+      w.p1.recognizedTarget=w.p2.recognizedTarget=false;
+    }
+    if(rec.state!=='active'){
+      rec.state='active';rec.startedAt=w.time;rec.expiresAt=w.time+10;rec.initiator=role;rec.participants={};
+      w.p1.notice='同伴正在发起相认。请在 10 秒内按同一个辨认键回应。';
+      w.p1.noticeUntil=rec.expiresAt;
+      w.p2.notice=w.p1.notice;w.p2.noticeUntil=rec.expiresAt;
+    }
+    rec.participants[role]=true;p.recognizedTarget=true;
+    if(rec.participants[otherRole]){beginEscape(w);return true;}
+    p.notice='相认已发起。请同伴在 10 秒内按同一个辨认键回应。';p.noticeUntil=rec.expiresAt;
+    other.notice='同伴正在发起相认。按辨认键回应。';other.noticeUntil=rec.expiresAt;
+    return true;
+  }
+
   function interact(w,role,submit){
     // 被对方手电筒照住时不能发起任何互动（观察/辨认都不行），只能等判定或自动解除。
     if(G.Beam&&!G.Beam.canAct(w,role)){
@@ -232,29 +254,11 @@
       frozenP.noticeUntil=w.time+1.5;
       return;
     }
-    var p=actor(w,role),e=nearest(w,p,role,submit);
+    var p=actor(w,role);
+    // 队友在三米内时，辨认键直接用于相认，不依赖瞄准、手电可见性或附近 NPC 的目标排序。
+    if(submit&&recognizePartner(w,role,p))return;
+    var e=nearest(w,p,role,submit);
     if(!e){p.notice=submit?'附近没有可辨认的人。':'附近没有可调查的物品或人。';p.noticeUntil=w.time+1.5;return;}
-
-    // === 楼梯：楼层切换 + 过渡动画 ===
-    if(e.kind==='stairs'){
-      var nf=e.targetFloor;
-      if(!floorValid(nf)){p.notice='楼梯暂时无法通行。';p.noticeUntil=w.time+1.5;return;}
-      // 触发过渡动画
-      if(G.Renderer.triggerFloorTransition)G.Renderer.triggerFloorTransition(role,p.floor,nf);
-      var oldFloor=p.floor;
-      p.floor=nf;
-      // 根据方向设置落点
-      if(nf===1)p.x=1190,p.y=490;
-      else if(nf===2){
-        if(e.direction==='UP'){p.x=1270,p.y=490;}
-        else{p.x=1110,p.y=490;}
-      }else if(nf===3)p.x=1190,p.y=490;
-      p.currentRoom=roomAt(p);
-      p.notice='楼梯通往'+nf+'楼。你听到脚步声回荡在空旷的楼梯井里。';
-      p.noticeUntil=w.time+2.5;
-      publish(w,role==='p1'?'p2':'p1','我从'+oldFloor+'楼爬到'+nf+'楼了，小心楼梯很暗。');
-      return;
-    }
 
     // === 线索 ===
     if(e.kind==='clue'){
@@ -329,20 +333,6 @@
         p.noticeUntil=w.time+2.5;
       }
       if(p.hp<=0&&!w.downedRole)end(w,'wrong');
-      return;
-    }
-
-    // === 玩家（真爱）===
-    if(e.kind==='player'){
-      var otherRole=role==='p1'?'p2':'p1';
-      var other=actor(w,otherRole);
-      if(p.floor!==other.floor||dist(p,other)>300){p.notice='相认需要和对方在同一层、三米以内。';p.noticeUntil=w.time+2.2;return;}
-      var rec=w.recognition||{state:'idle',participants:{}};
-      if(rec.state==='active'&&rec.expiresAt<w.time){rec.state='idle';rec.participants={};}
-      if(rec.state!=='active'){rec.state='active';rec.startedAt=w.time;rec.expiresAt=w.time+3;rec.initiator=role;rec.participants={};}
-      rec.participants[role]=true;p.recognizedTarget=true;
-      p.notice='你发起了相认，等待对方在 3 秒内回应。';p.noticeUntil=rec.expiresAt;
-      if(rec.participants[otherRole])return beginEscape(w);
       return;
     }
 
@@ -517,7 +507,7 @@
     w.escape=w.escape||{};w.escape.active=true;w.escape.enemiesSpawned=true;w.flags.escape=true;G.State.set('ESCAPE');
     var f=w.p1.floor;
     for(var i=0;i<6;i++)G.World.add(w,G.Entities.make({id:'infected-'+i,kind:'zombie',floor:f,x:260+i*350,y:i%2?260:720,r:24,speed:72,hp:3,hitCd:0,phase:i}));
-    w.p1.notice='相认成功！医院公敌已出现，和同伴一起到出口。';w.p2.notice=w.p1.notice;w.p1.noticeUntil=w.p2.noticeUntil=w.time+5;
+    w.p1.notice='相认成功！出口已标在小地图上。两人都到达，或同伴倒下后你到达出口即可逃生。';w.p2.notice=w.p1.notice;w.p1.noticeUntil=w.p2.noticeUntil=w.time+5;
   }
 
   function updateEscape(w,dt){
@@ -525,7 +515,13 @@
     w.entities.forEach(function(n){if(n.kind!=='zombie'||!n.alive)return;var target=dist(n,w.p1)<dist(n,w.p2)?w.p1:w.p2;if(n.floor!==target.floor)return;var dx=target.x-n.x,dy=target.y-n.y,d=Math.hypot(dx,dy)||1;n.x+=dx/d*n.speed*dt;n.y+=dy/d*n.speed*dt;if(d<65&&n.hitCd<=0){n.hitCd=1.1;if(G.Hazard)G.Hazard.damage(w,8,{downedRole:target.id});}});
     w.entities.forEach(function(n){if(n.hitCd>0)n.hitCd=Math.max(0,n.hitCd-dt);});
     var ex=w.entities.find(function(e){return e.kind==='exit'&&e.floor===w.p1.floor;});
-    if(ex&&w.p1.floor===w.p2.floor&&dist(w.p1,ex)<90&&dist(w.p2,ex)<90){w.escape.exitReady=true;end(w,'escaped');}
+    if(!ex)return;
+    var out1=!!(w.p1.downed||w.p1.dead||(w.downedRole==='p1'&&w.p1.hp<=0));
+    var out2=!!(w.p2.downed||w.p2.dead||(w.downedRole==='p2'&&w.p2.hp<=0));
+    var at1=w.p1.floor===ex.floor&&dist(w.p1,ex)<90;
+    var at2=w.p2.floor===ex.floor&&dist(w.p2,ex)<90;
+    // 正常结局：两人一起到达；一人倒地/死亡后，幸存者单独到达也算逃生成功。
+    if((at1&&at2)||(out1&&!out2&&at2)||(out2&&!out1&&at1)){w.escape.exitReady=true;end(w,'escaped');}
   }
 
   // ========== 主 tick ==========
@@ -597,7 +593,8 @@
       if(G.Renderer&&G.Renderer.resetViews)G.Renderer.resetViews();
       this.world=G.World.create({debug:debug,sameFloor:true});
       this.world.debugMode=debug;
-      this.world.brightMode=false;
+      // 调试模式默认打开全亮照明，方便直接检查场景；仍保留亮度开关供测试黑暗效果。
+      this.world.brightMode=debug;
       G.Level.build(this.world);
       if(G.Hazard)G.Hazard.reset(this.world);
       // 初始化 explored 标记
@@ -874,17 +871,17 @@
       out='<h1>再 见？爱 人！</h1>'
         +'<div class="sub">末日医院 · 黑暗中的双人寻人故事</div>'
         +'<p>末日来了。医院的感染把每个人都变成了裹满绷带的躯体——你，你的爱人，还有走廊深处的所有陌生人。</p>'
-        +'<p>停电后的医院漆黑一片，你们在混乱中失散。只有手电筒照到的地方能看清；楼梯、病房和走廊深处，都可能藏着什么。</p>'
+        +'<p>停电后的医院漆黑一片，你们在混乱中失散。只有手电筒照到的地方能看清；病房和走廊深处，都可能藏着什么。</p>'
         +'<p class="warn">感染抹掉了每个人的脸：绷带、步态、身上的旧物才是唯一能分辨彼此的东西。</p>'
         +'<div class="go">按任意键查看操作说明</div>';
     }
     else if(kind==='brief'){
       out='<h2>末 日 医 院 · 第 四 十 一 天</h2>'
         +'<p>最后一次停电发生在感染爆发之后。你和爱人、还有医院里所有人，都变成了同一种裹满绷带的躯体；你们在黑暗中走散，连彼此的脸都认不出了。</p>'
-        +'<p>两支手电筒是黑暗里仅有的视野。沿着四层医院寻找线索、穿过危险区，再设法找到对方。满城都是同一张脸，只有身上的旧物不会说谎。</p>'
+        +'<p>两支手电筒是黑暗里仅有的视野。在这一层医院里寻找线索、穿过危险区，再设法找到对方。满城都是同一张脸，只有身上的旧物不会说谎。</p>'
         +'<h3>当前版本操作</h3>'
         +'<p>你们在同一层医院的两端醒来，外貌变得陌生。<br>'
-        +'穿过小地图标红的危险区 → 观察心率和共享血条 → 在三米内同时相认 → 一起逃到出口。</p>'
+        +'穿过小地图标红的危险区 → 观察心率和共享血条 → 在三米内完成相认 → 根据小地图出口标记逃离。</p>'
         +'<div class="keys">'
         +'<div><b>A 玩家（键盘+鼠标）</b>：WASD 移动　·　第一人称点击左屏捕获鼠标后直接移动转视角（Esc 释放）　·　第三人称拖动鼠标环视　·　V 切换视角　·　E 观察　·　F 辨认　·　Shift 冲刺　·　R 同步　·　Y 是 / N 否（照到对方时）　·　Q 闪光（闪光灯卡）</div>'
         +'<div><b>B 玩家（外置手柄）</b>：左摇杆移动　·　右摇杆转视角　·　Y 第一/第三人称　·　A 观察　·　X 辨认　·　B 冲刺　·　LB 同步　·　RB 放弃　·　方向键上 是 / 下 否　·　LT 闪光（闪光灯卡）</div>'
@@ -898,11 +895,10 @@
         +'<li><b>NPC 会反应</b>：被你看太多次的 NPC 会跑；你们俩人凑到一起，整层 NPC 都不动</li>'
         +'<li><b>手电照人</b>：手电筒照住对方时，对方不能动、不能操作；照方按 是/否 判定对方身份，判定后立即解除；照方松开光束超过 1.5 秒也会自动解除</li>'
         +'<li><b>视角</b>：A 第一人称点击左屏后直接移动鼠标转视角，第三人称拖动鼠标环绕；B 使用手柄右摇杆；V / Y 切换视角</li>'
-        +'<li><b>危险区</b>：每层有三个固定污染区，停留超过两秒会持续扣共享血量，视野逐渐模糊；离开后会慢慢恢复。小地图红色区域就是危险区。</li>'
-        +'<li><b>心率与救援</b>：同层十米内心率会加快，只显示等级和声音；共享血量归零后对应玩家倒地，另一名玩家靠近长按 F / 手柄 X 两秒即可救援。</li>'
-        +'<li><b>相认与逃生</b>：两人距离三米内，A 按 F、B 按手柄 X，在三秒窗口内同时发起相认；成功后感染者出现，两人一起到出口胜利。</li>'
+        +'<li><b>危险区</b>：这一层有三个固定污染区，停留超过两秒会持续扣共享血量，视野逐渐模糊；离开后会慢慢恢复。小地图红色区域就是危险区。</li>'
+        +'<li><b>心率与救援</b>：十米内心率会加快，只显示等级和声音；共享血量归零后对应玩家倒地，另一名玩家靠近长按 F / 手柄 X 两秒即可救援。</li>'
+        +'<li><b>相认与逃生</b>：两人距离三米内，A 按 F、B 按手柄 X；一人发起后，另一人按同一个辨认键回应，10 秒内完成相认。成功后感染者出现，两人一起到出口胜利。</li>'
         +'<li><b>紧急同步</b>：A 按 R，B 按手柄 LB，3 秒内响应即可自动联动通知会合</li>'
-        +'<li><b>楼梯</b>：靠近楼梯按 E / 手柄 A 切换楼层</li>'
         +'</ul>'
         +'</div>'
         +'<button type="button" id="start-duo" class="start-button">开始游戏（按 2 / 手柄 A）</button>'
@@ -922,7 +918,7 @@
         out='<div class="roulette-intro"><div class="tag">调 试 模 式</div><h2>自由选择六种手电筒功能</h2><p>可直接指定卡牌，便于测试玩法；普通模式仍使用随机大转盘。</p></div>'
           +'<div class="debug-toolbar"><button type="button" id="debug-bright-toggle" class="start-button"></button><span>A：数字键 1-6 / 点击卡牌，L 切换明亮模式　·　B：手柄十字键选择，A 确认</span></div>'
           +'<div class="wheel-split debug-split">'+debugPanel('p1','A 玩家','键盘 · 鼠标')+debugPanel('p2','B 玩家','Xbox 手柄 · 鼠标可选')+'</div>'
-          +'<p class="wheel-footer">调试模式不改变碰撞、墙体遮挡或手电照人规则；明亮模式只移除环境黑暗。</p>';
+          +'<p class="wheel-footer">调试模式默认全亮并显示同层队友位置；碰撞、墙体遮挡和手电照人规则保持生效，可用亮度开关测试黑暗效果。</p>';
       }else{
       function wheel(role,label,device){
         var labels=G.Beam.CARDS.map(function(card,i){
@@ -946,7 +942,7 @@
         recognized:'你们在黑暗中认出了彼此。感染者已经醒来，出口就在前方。',
         escaped:'你们守住了彼此的手电光，一起穿过感染者和出口，终于逃离医院。',
         wrong:'生命耗尽。那些和你长得像的人仍在走廊里游荡，脚步声忽远忽近。',
-        abandon:'你选择停止寻找。医院三楼的灯在楼梯井里闪烁着，像是在等一个不会再上来的人。'
+        abandon:'你选择停止寻找。医院走廊尽头的灯忽明忽暗，像是在等一个不会再回来的人。'
       };
       out='<h2>'+titles[key]+'</h2>'
         +'<div class="ending">'+texts[key]+'</div>'
@@ -1055,23 +1051,25 @@
     // 当前位置
     ctx.fillStyle='#d8b56c';
     ctx.beginPath();ctx.arc(p.x/2400*220,p.y/980*110,4,0,Math.PI*2);ctx.fill();
-    // 楼梯标记
-    w.entities.forEach(function(e){
-      if(e.kind==='stairs'&&e.floor===p.floor){
-        ctx.fillStyle='#4ab1c8';
-        ctx.fillRect(e.x/2400*220-4,e.y/980*110-4,8,8);
+    var other=actor(w,role==='p1'?'p2':'p1');
+    // 调试模式显示同层队友位置，普通模式仍保留寻找队友所需的信息差。
+    if(w.debugMode&&other.floor===p.floor){
+      ctx.fillStyle=other.id==='p1'?'#7fd7ee':'#f18ac4';
+      ctx.beginPath();ctx.arc(other.x/2400*220,other.y/980*110,4,0,Math.PI*2);ctx.fill();
+    }
+    // 相认成功后公开出口位置；普通探索阶段不提前泄露出口。
+    if(w.escape&&w.escape.active){
+      var exit=w.entities.find(function(e){return e.kind==='exit'&&e.floor===p.floor;});
+      if(exit){
+        ctx.fillStyle='#ffd166';
+        ctx.beginPath();ctx.arc(exit.x/2400*220,exit.y/980*110,6,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle='#ffd166';ctx.font='8px sans-serif';
+        ctx.fillText('出口',Math.max(2,exit.x/2400*220-9),Math.max(18,exit.y/980*110-9));
       }
-    });
+    }
     ctx.fillStyle='#a9b2b5';
     ctx.font='9px sans-serif';
-    ctx.fillText(p.floor+'F · 已探索区域',5,10);
-    // 楼层切换提示
-    var other=actor(w,role==='p1'?'p2':'p1');
-    if(other.floor!==p.floor){
-      ctx.fillStyle='#b4453c';
-      ctx.font='8px sans-serif';
-      ctx.fillText('同伴在 '+other.floor+'F',cv.width-60,10);
-    }
+    ctx.fillText('1F · 已探索区域'+(w.debugMode?' · 调试可见队友':''),5,10);
   }
 
   G.UI.update=function(w){
@@ -1166,9 +1164,9 @@
     // 支线：收集线索、拿到手机、观察足够多 NPC 特征
     function buildTaskHTML(role){
       var p=actor(w,role);
-      var otherFloor=actor(w,role==='p1'?'p2':'p1').floor;
+      var otherFloor=1;
       var clueCount=(p.clues||[]).length;
-      var mainHTML='<div class="m">● 主线：在 '+otherFloor+' 楼附近找到对方，提交辨认</div>';
+      var mainHTML='<div class="m">● 主线：在走廊里找到对方，提交辨认</div>';
       var subHTML='<div class="s">□ 支线</div>';
       var tasks=[
         {done:p.phone,label:'拾取手机（自动短信定位）'},
