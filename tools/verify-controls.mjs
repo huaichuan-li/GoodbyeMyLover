@@ -31,8 +31,10 @@ document.getElementById = id => {
   if (!elements.has(id)) elements.set(id, new Target());
   return elements.get(id);
 };
-let focused = true, pad = null;
+let focused = true, pad = null, hidden = false;
 document.hasFocus = () => focused;
+document.hidden = false;
+Object.defineProperty(document, 'hidden', { get: () => hidden, configurable: true });
 document.body = new Target();
 const window = new Target();
 Object.assign(window, { innerWidth: 1280, innerHeight: 720, devicePixelRatio: 1 });
@@ -152,10 +154,18 @@ test('gamepad sticks/buttons affect B only and ignore keyboard arrows', () => {
   pad.axes = [0, 0, 0, 0]; key('ArrowUp');
   const stopped = position(w.p2); step(); key('ArrowUp', false);
   assert.deepEqual(position(w.p2), stopped);
+  // 失焦（iframe 预览/多窗口，hasFocus=false）不应吞掉手柄：只有 document.hidden
+  // 为真（页面标签被隐藏）时才暂停手柄输入。这是 B 角色在预览面板里动不了的修复点。
   pad.axes = [0, -1, 1, 0]; focused = false;
-  const yaw = G.Renderer.getCameraYaw('p2'); G.Input.pollGamepad(1 / 60); step();
-  assert.deepEqual(position(w.p2), stopped); close(G.Renderer.getCameraYaw('p2'), yaw);
-  focused = true;
+  const yaw = G.Renderer.getCameraYaw('p2'); G.Input.pollGamepad(1 / 60);
+  const beforeUnfocusedMove = position(w.p2); step();
+  assert.ok(w.p2.y < beforeUnfocusedMove[1] - 20, '手柄在 hasFocus=false 时仍应驱动 B');
+  assert.ok(G.Renderer.getCameraYaw('p2') > yaw, '手柄右摇杆在失焦时仍应转动 B 相机');
+  // 页面真正隐藏时才暂停
+  hidden = true; pad.axes = [0, -1, 1, 0];
+  const hiddenPos = position(w.p2); G.Input.pollGamepad(1 / 60); step();
+  assert.deepEqual(position(w.p2), hiddenPos, 'document.hidden=true 时应暂停手柄');
+  hidden = false; focused = true;
 });
 test('controller turning is consistent at 30, 60 and 120 fps', () => {
   for (const fps of [30, 60, 120]) {

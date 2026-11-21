@@ -69,7 +69,9 @@
       for (var b = 0; b < GAMEPAD_CODES.length; b++) {
         var button = pad.buttons[GAMEPAD_INDICES[b]];
         var pressed = !!(button && button.pressed);
-        if (pressed && !Input.gamepadButtons[b] && document.hasFocus()) {
+        // 手柄按钮不依赖页面键盘焦点：iframe 预览/多窗口下 document.hasFocus() 会
+        // 返回 false，若据此拦截会吞掉全部手柄输入。只要页面可见(!hidden)即接受。
+        if (pressed && !Input.gamepadButtons[b] && !document.hidden) {
           var code = GAMEPAD_CODES[b];
           var ev = { code: code, key: GAMEPAD_LABELS[code], owner: 'p2', source: 'gamepad', t: performance.now() / 1000 };
           Input.presses.push(ev); Input.buffer.push(ev);
@@ -78,7 +80,7 @@
         Input.gamepadButtons[b] = pressed;
       }
       // B 的右摇杆只影响右屏相机；A 的鼠标状态完全隔离。
-      if (G.State.current === 'PLAY' && document.hasFocus() && G.Renderer && G.Renderer.updateGamepadCamera) {
+      if (G.State.current === 'PLAY' && !document.hidden && G.Renderer && G.Renderer.updateGamepadCamera) {
         var look = Input.gamepadStick(2);
         G.Renderer.updateGamepadCamera('p2', look.x, look.y, dt);
       }
@@ -123,7 +125,8 @@
         if (Input.isDown('KeyW')) y -= 1;
         if (Input.isDown('KeyS')) y += 1;
       } else {
-        var stick = document.hasFocus() ? Input.gamepadStick(0) : { x: 0, y: 0 };
+        // 同上：摇杆移动不能被 hasFocus 拦截，否则 iframe/失焦时 B 角色完全不动。
+        var stick = !document.hidden ? Input.gamepadStick(0) : { x: 0, y: 0 };
         x = stick.x; y = stick.y;
       }
       var len = Math.sqrt(x * x + y * y);
