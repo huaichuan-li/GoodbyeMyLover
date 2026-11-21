@@ -34,6 +34,9 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
   };
   var SCENE_GLB = 'assets/publics/model/hospital_1f.glb';
   var MUMMY_GLB = 'assets/animated/mummy_animated.glb';
+  // 人物高度：按需求在上一版 1.6m 基础上再减半 → 0.8m。
+  // 第三人称下人物在画面里只占约原来一半，走廊与场景更完整可见。
+  var MUMMY_HEIGHT = 0.8;
   var mats = {};
   function mat(name, color, roughness) {
     if (!mats[name]) mats[name] = new THREE.MeshStandardMaterial({ color: color, roughness: roughness || 0.85 });
@@ -52,35 +55,17 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
   // trait 用轻量网格挂到骨骼 child，随动画摆动。limpGait 用 Limp_Right 动画体现。
   // 若 GLB 尚未加载完成（或 file:// 下 ESM 未生效），回退到程序化 box 木乃伊。
   var MUMMY_BODY = 0xc8b89a, MUMMY_HEAD = 0xbfae8f;
-  // trait → 挂点骨骼 + 局部位移/尺寸 + 材质名/颜色（坐标为建议值，实机可微调）
-  var TRAIT_RIG = {
-    blueWristband:  { bone: 'forearm.L', pos: [0, -0.05, 0],    size: [0.11, 0.11, 0.13], mat: 'trait-blue',   color: 0x4a8fc9 },
-    darkCoat:       { bone: 'chest',      pos: [0, 0, 0],        size: [0.68, 0.72, 0.62], mat: 'trait-coat',   color: 0x4a4f57 },
-    badgeAccessory: { bone: 'chest',      pos: [0.12, 0.12, 0.33], size: [0.13, 0.13, 0.05], mat: 'trait-badge',  color: 0xc8ccd1 },
-    silverRing:     { bone: 'hand.L',     pos: [0.02, -0.02, 0.04], size: [0.06, 0.06, 0.06], mat: 'trait-ring',   color: 0xd8dde2 },
-    scarLeftCheek:  { bone: 'head',       pos: [-0.2, 0.05, 0.25], size: [0.1, 0.02, 0.02],  mat: 'trait-scar',   color: 0xe6dcc8 },
-    glassesRound:   { bone: 'head',       pos: [0, 0.06, 0.27],   size: [0.36, 0.1, 0.03],  mat: 'trait-glass',  color: 0x2a3238 },
-    caneDark:       { bone: 'hand.R',     pos: [0.05, -0.45, 0.02], size: [0.05, 0.9, 0.05], mat: 'trait-cane',   color: 0x3b2a1e }
-  };
-  function attachTraitProps(avatar, traits) {
-    (traits || []).forEach(function (t) {
-      var def = TRAIT_RIG[t];
-      if (!def) return; // limpGait 无挂件，用动画体现
-      var bone = avatar.getObjectByName(def.bone);
-      if (!bone) return;
-      var m = new THREE.Mesh(new THREE.BoxGeometry(def.size[0], def.size[1], def.size[2]), mat(def.mat, def.color));
-      m.name = 'trait-' + t;
-      m.position.set(def.pos[0], def.pos[1], def.pos[2]);
-      m.castShadow = false;
-      bone.add(m);
-    });
-  }
+  // 角色外观完全交给 mummy_animated.glb 本体。早期版本把 trait（深色外套/徽章/
+  // 腕带等）做成 BoxGeometry 方块挂到骨骼上，实机在角色胸前呈现为一个明显的
+  // 灰色方块壳（用户反馈"人物身上还有一个方块"），已全部移除。
+  // trait 仍保留在 userData.traits 供动画（limpGait）与辨认逻辑/HUD 文字使用，
+  // 但不再生成任何几何挂件。
   function buildMummyBody(group, id, traits) {
     if (mummySource) {
       var avatar = cloneSkinned(mummySource);
       avatar.name = 'mummy-avatar';
       group.add(avatar);
-      attachTraitProps(avatar, traits);
+      // 不再挂 trait 方块：角色外观就是 GLB 本体，避免身上出现方块壳
       var mixer = new THREE.AnimationMixer(avatar);
       var actions = {};
       Object.keys(mummyClips).forEach(function (name) {
@@ -103,13 +88,8 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
     box(group, 'leg-r', [0.15, 0.25, 0], [0.18, 0.55, 0.18], mat('mummy-leg-r-' + id, MUMMY_BODY));
     box(group, 'wrap-1', [0, 0.95, 0.31], [0.64, 0.05, 0.02], mat('wrap-line', 0x9c8c6e));
     box(group, 'wrap-2', [0, 0.55, 0.31], [0.64, 0.05, 0.02], mat('wrap-line', 0x9c8c6e));
-    if (traits.indexOf('blueWristband') >= 0) box(group, 'trait-blueWristband', [-0.36, 0.9, 0], [0.12, 0.12, 0.6], mat('trait-blue', 0x4a8fc9));
-    if (traits.indexOf('darkCoat') >= 0) box(group, 'trait-darkCoat', [0, 0.75, 0], [0.68, 1.02, 0.62], mat('trait-darkcoat', 0x4a4f57));
-    if (traits.indexOf('badgeAccessory') >= 0) box(group, 'trait-badge', [0.12, 1.12, 0.31], [0.14, 0.14, 0.06], mat('trait-badge', 0xc8ccd1, 0.4));
-    if (traits.indexOf('silverRing') >= 0) box(group, 'trait-ring', [-0.3, 0.42, 0.14], [0.06, 0.06, 0.06], mat('trait-ring', 0xd8dde2, 0.3));
-    if (traits.indexOf('scarLeftCheek') >= 0) box(group, 'trait-scar', [-0.2, 1.58, 0.27], [0.1, 0.02, 0.02], mat('trait-scar', 0xe6dcc8));
-    if (traits.indexOf('glassesRound') >= 0) box(group, 'trait-glasses', [0, 1.6, 0.27], [0.36, 0.1, 0.03], mat('trait-glasses', 0x2a3238, 0.4));
-    if (traits.indexOf('caneDark') >= 0) box(group, 'trait-cane', [0.4, 0.5, 0.1], [0.06, 1.0, 0.06], mat('trait-cane', 0x3b2a1e));
+    // 程序化回退同样不生成 trait 方块挂件（避免角色身上出现方块壳）。
+    // limpGait 用腿长差表现，其余外貌线索仅通过 HUD 文字呈现。
     if (traits.indexOf('limpGait') >= 0) group.getObjectByName('leg-r') && (group.getObjectByName('leg-r').position.y = 0.2);
   }
   function assetInstance(id) {
@@ -211,7 +191,8 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
       model.updateMatrixWorld(true);
       var bounds = new THREE.Box3().setFromObject(model);
       var size = bounds.getSize(new THREE.Vector3());
-      var scale = 1.8 / (size.y || 1);
+      // 归一化到 MUMMY_HEIGHT(≈门高 2/3)，而不是旧的 1.8m
+      var scale = MUMMY_HEIGHT / (size.y || 1);
       model.scale.setScalar(scale);
       model.position.set(0, -bounds.min.y * scale, 0);
       // 归一化贴图：避免 mipmap 生成开销，保持共享
@@ -242,12 +223,19 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
     floors[f] = group;
     scene.add(group);
 
-    // 最新医院场景 GLB：墙 / 门框 / 天花 / 地板 / 家具完整显示，作为画面主体。
-    // 视觉以 GLB 为准；碰撞 / 遮挡 / 镜头避障 / 手电仍由逻辑真源 w.walls 决定。
-    var hasSceneGLB = !!sceneGLB;
-    if (sceneGLB) group.add(sceneGLB);
+    if (sceneGLB) {
+      // 新场景 GLB 已到位：它是唯一视觉来源，完整渲染今天提供的最新建模。
+      // 严格按要求——不再叠加任何旧程序化残留物：地板/边界墙/天花装饰条/顶灯/
+      // 科室牌/走廊牌/灭火器/疏散牌/警示线，以及病床/床头桌/IV 架/推车/
+      // 护士站桌/椅子，一律不生成。画面里只出现新场景自带的墙、门、地板和家具。
+      // 碰撞 / 遮挡 / 相机避障 / 手电判定仍由逻辑真源 w.walls 决定（与视觉网格
+      // 解耦），GLB 的 WALL_ 结构件保留原生 raycast 供第三人称相机避障。
+      group.add(sceneGLB);
+      return group;
+    }
 
-    // 程序化地板作为兜底：位于 GLB 地面下方，平时看不到；GLB 加载失败时顶上。
+    // ---- 兜底：仅在 GLB 未加载完成 / 加载失败（file:// 或断网）时使用的旧程序化场景 ----
+    // 保证单文件/离线打开时仍有可玩画面；HTTP 正常加载新场景时这段不会执行。
     box(group, 'floor', [12, base - 0.24, 0], [26, 0.4, 11], mat('floor', 0x46545c));
     var wall = mat('wall', 0x27323a);
     var trim = mat('trim', 0x59656c);
@@ -281,19 +269,6 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
     box(group, 'warn-line-2', [11.9, base - 0.21, -3.5], [3.5, 0.01, 0.08], warnMat);
 
     addFurniture(group, f, base);
-
-    // GLB 场景到位后，隐藏会与之重叠穿插的程序化硬表面（墙/天花/逻辑墙网格）。
-    // 这些网格仍留在场景图中供相机避障射线使用（Raycaster 会跳过 visible=false），
-    // 但碰撞/遮挡/手电判定本就走 w.walls 逻辑数据，不受可见性影响。
-    if (hasSceneGLB) {
-      group.children.forEach(function (child) {
-        if (child.name === 'floor' || child.name === 'north-wall' || child.name === 'south-wall' ||
-            child.name === 'west-wall' || child.name === 'east-wall' ||
-            /^ceiling-(trim|light)-/.test(child.name) || /^proc-wall-/.test(child.name)) {
-          child.visible = false;
-        }
-      });
-    }
     return group;
   }
 

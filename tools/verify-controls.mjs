@@ -510,7 +510,7 @@ test('单层世界：楼层表只含 1F，所有实体/墙/科室都在 1F，无
 });
 
 // ========== 医院场景 GLB 断言 ==========
-test('医院场景 GLB：结构件完整显示、射线禁用，程序化墙隐藏，归一化后挂到 1F', () => {
+test('医院场景 GLB：结构件完整显示、装饰射线禁用，不叠加任何旧程序化残留物，归一化后挂到 1F', () => {
   const sceneAsset = pendingAssets.find(x => x.url.endsWith('hospital_1f.glb'));
   assert.ok(sceneAsset, '应请求医院场景 GLB');
   const src = new Three.Group();
@@ -535,12 +535,14 @@ test('医院场景 GLB：结构件完整显示、射线禁用，程序化墙隐�
   // 归一化足迹：宽度映射到 24m，取 min(sx,sz)，此处 size.x=4 -> 6 倍缩放落在 anchor 子节点
   const anchor = glbInstance.children[0];
   assert.ok(Math.abs(anchor.scale.x - 6) < 1e-6, '应按 24/4=6 缩放到逻辑足迹');
-  // GLB 到位后：程序化方块墙/天花应隐藏，只保留逻辑碰撞数据（走 w.walls）
-  const procWalls = floorGroup.children.filter(x => /^proc-wall-/.test(x.name));
-  assert.ok(procWalls.length > 0, '应生成程序化逻辑墙网格作为碰撞可视化兜底');
-  assert.ok(procWalls.every(x => x.visible === false), 'GLB 到位后程序化墙网格应隐藏，避免与新场景重叠');
-  const shell = floorGroup.children.filter(x => /^(north-wall|south-wall|west-wall|east-wall|ceiling-(trim|light)-)/.test(x.name));
-  assert.ok(shell.length > 0 && shell.every(x => x.visible === false), 'GLB 到位后程序化边界墙/天花应隐藏');
+  // GLB 到位后：画面只显示新场景，不再生成任何旧程序化残留物（床/桌/椅/墙/标识等）。
+  // 碰撞/遮挡/相机避障仍走 w.walls 逻辑 + GLB 的 WALL_ 结构件原生 raycast。
+  const legacyNames = /^(floor|north-wall|south-wall|west-wall|east-wall|ceiling-(trim|light)-|proc-wall-|department-sign|corridor-sign|fire-extinguisher|exit-sign|warn-line|bed-fallback|mattress-fallback|nightstand|iv-pole|iv-bag|trolley-fallback|desk-|chair-)/;
+  const legacy = floorGroup.children.filter(x => legacyNames.test(x.name));
+  assert.equal(legacy.length, 0, 'GLB 到位后不应生成任何旧程序化残留物：' + legacy.map(x => x.name).join(','));
+  // 程序化家具 GLB（床/推车）也不再叠加到新场景
+  const bedProps = floorGroup.children.filter(x => x.userData && x.userData.sourceBounds && x !== glbInstance);
+  assert.equal(bedProps.length, 0, '新场景不应再叠加旧的病床/推车道具实例');
 });
 
 test('医院 GLB 地板顶面必须落在世界 y=0（不被地下几何抬高），且地板 slab 基准记录正确', () => {
@@ -578,7 +580,7 @@ test('角色与物体不再带 __outline__ 发光描边方块，也不再有荧�
 });
 
 // ========== 动画木乃伊 GLB 断言 ==========
-test('动画木乃伊 GLB：角色带 mixer/三条动作，trait 挂件落在指定骨骼', () => {
+test('动画木乃伊 GLB：带 mixer/三条动作，无方块挂件，高度≈0.8m(上一版一半)，材质共享', () => {
   const mummyAsset = pendingAssets.find(x => x.url.endsWith('mummy_animated.glb'));
   assert.ok(mummyAsset, '应请求木乃伊动画 GLB');
   const src = new Three.Group();
@@ -598,15 +600,16 @@ test('动画木乃伊 GLB：角色带 mixer/三条动作，trait 挂件落在指
   assert.ok(p1obj.userData.mixer, '角色实体应带 AnimationMixer');
   assert.deepEqual(Object.keys(p1obj.userData.actions).sort(), ['Idle', 'Limp_Right', 'Walk']);
   assert.ok(p1obj.userData.mixer && p2obj.userData.mixer, '两名玩家都应各自持有 mixer');
-  // p1 traits = darkCoat + badgeAccessory；p2 = blueWristband + limpGait（limp 无挂件）
-  assert.ok(p1obj.getObjectByName('trait-darkCoat'), 'p1 深色外套挂件应存在');
-  assert.ok(p1obj.getObjectByName('trait-badgeAccessory'), 'p1 徽章挂件应存在');
-  assert.ok(p2obj.getObjectByName('trait-blueWristband'), 'p2 蓝色腕带挂件应存在');
-  assert.equal(p2obj.getObjectByName('trait-limpGait'), undefined, 'limpGait 用动画体现，不应有挂件');
-  const coat = p1obj.getObjectByName('trait-darkCoat');
-  assert.equal(coat.parent.name, 'chest', '深色外套应挂在 chest 骨骼');
-  const band = p2obj.getObjectByName('trait-blueWristband');
-  assert.equal(band.parent.name, 'forearm.L', '腕带应挂在 forearm.L 骨骼');
+  // 角色身上不生成任何 trait 方块挂件（旧版深色外套是套在胸前的灰色方块，已移除）
+  let traitBoxes = 0;
+  frames[0].scene.traverse(obj => { if (/^trait-/.test(obj.name)) traitBoxes++; });
+  assert.equal(traitBoxes, 0, '不应存在 trait- 方块挂件（人物身上不能有方块壳）');
+  // trait 数据仍保留供辨认/动画逻辑使用
+  assert.ok((p1obj.userData.traits || []).length >= 1, 'trait 数据应保留在 userData');
+  // 高度归一化到 0.8m（上一版 1.6m 的一半），mock body 原始高 2 → scale=0.4
+  p1obj.updateMatrixWorld(true);
+  const h = new Three.Box3().setFromObject(p1obj).getSize(new Three.Vector3()).y;
+  assert.ok(Math.abs(h - 0.8) < 1e-3, `角色高度应≈0.8m(上一版一半)，实际 ${h.toFixed(3)}m`);
   // 共享材质：cloneSkinned 不复制材质，两个实例的同一网格应指向同一材质对象
   const m1 = p1obj.getObjectByName('output_unwrapped');
   const m2 = p2obj.getObjectByName('output_unwrapped');
